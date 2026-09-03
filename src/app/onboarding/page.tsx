@@ -1,10 +1,11 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, ArrowRight, Building2, Package, Users, ShoppingCart, Sparkles, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppProvider, useApp } from "@/lib/context/app-context";
+import { createOrganizationAction } from "@/lib/supabase/org-actions";
 import { cn, formatFCFA } from "@/lib/utils";
 
 const steps = [
@@ -40,15 +41,40 @@ function OnboardingInner() {
 
   const [saleCustomerId, setSaleCustomerId] = useState("");
   const [saleQty, setSaleQty] = useState<Record<string, number>>({});
+  const [orgError, setOrgError] = useState("");
+  const orgCreatedRef = useRef(false);
 
   const progress = (currentStep / steps.length) * 100;
 
-  const handleFinishStep1 = () => {
-    updateOrganization({
-      name: orgName.trim() || organization.name,
-      sector: sector.trim() || organization.sector,
-      currency: currency.trim() || organization.currency,
-    });
+  const handleFinishStep1 = async () => {
+    const name = orgName.trim() || organization.name;
+    const finalSector = sector.trim() || organization.sector;
+    const finalCurrency = currency.trim() || organization.currency;
+
+    if (!orgCreatedRef.current) {
+      orgCreatedRef.current = true;
+      const res = await createOrganizationAction({
+        name,
+        sector: finalSector,
+        currency: finalCurrency,
+      });
+      if (res.ok) {
+        setOrgError("");
+      } else {
+        // Backend indisponible (dev sans Supabase) : on revient au mock pour
+        // ne pas bloquer le parcours hors-auth.
+        orgCreatedRef.current = false;
+        setOrgError(
+          res.error === "UNAUTHENTICATED"
+            ? "Vous devez être connecté pour créer votre entreprise."
+            : res.error === "NOT_CONFIGURED"
+            ? "Backend non configuré : entreprise enregistrée localement (démo)."
+            : res.error
+        );
+      }
+    }
+
+    updateOrganization({ name, sector: finalSector, currency: finalCurrency });
     setCurrentStep(2);
   };
 
@@ -157,6 +183,11 @@ function OnboardingInner() {
                   className="w-full h-11 px-4 rounded-[10px] border border-border bg-background text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
               </div>
+              {orgError && (
+                <p role="status" className="text-xs text-muted">
+                  {orgError}
+                </p>
+              )}
             </div>
           )}
 

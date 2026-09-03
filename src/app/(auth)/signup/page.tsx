@@ -1,12 +1,19 @@
 ﻿"use client";
 
-import { useState } from "react";
 import Link from "next/link";
+import { useActionState, useState } from "react";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { signUpAction, type AuthActionState } from "@/lib/supabase/auth-actions";
+
+const initialState: AuthActionState = { ok: true };
 
 export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
+  const [state, formAction, pending] = useActionState(
+    signUpAction,
+    initialState
+  );
 
   return (
     <div className="min-h-screen flex">
@@ -40,13 +47,14 @@ export default function SignupPage() {
             Essai gratuit de 14 jours. Sans carte bancaire.
           </p>
 
-          <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+          <form action={formAction} className="space-y-4">
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium text-text block mb-1.5">
                   Prénom
                 </label>
                 <input
+                  name="firstName"
                   type="text"
                   placeholder="Patrick"
                   className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
@@ -57,6 +65,7 @@ export default function SignupPage() {
                   Nom
                 </label>
                 <input
+                  name="lastName"
                   type="text"
                   placeholder="Tognon"
                   className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
@@ -68,7 +77,9 @@ export default function SignupPage() {
                 Email
               </label>
               <input
+                name="email"
                 type="email"
+                required
                 placeholder="vous@entreprise.com"
                 className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
               />
@@ -79,7 +90,10 @@ export default function SignupPage() {
               </label>
               <div className="relative">
                 <input
+                  name="password"
                   type={showPassword ? "text" : "password"}
+                  required
+                  minLength={8}
                   placeholder="8 caractères minimum"
                   className="w-full h-11 px-4 pr-10 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                 />
@@ -97,12 +111,21 @@ export default function SignupPage() {
                 </button>
               </div>
             </div>
-            <Link href="/onboarding">
-              <Button className="w-full" size="lg">
-                Créer mon compte
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </Link>
+
+            {!state.ok ? (
+              <p role="alert" className="text-sm text-error">
+                {state.error}
+              </p>
+            ) : state.message ? (
+              <p role="status" className="text-sm text-success">
+                {state.message}
+              </p>
+            ) : null}
+
+            <Button type="submit" className="w-full" size="lg" disabled={pending}>
+              {pending ? "Création…" : "Créer mon compte"}
+              {!pending && <ArrowRight className="w-4 h-4" />}
+            </Button>
           </form>
 
           <p className="text-center text-sm text-muted mt-6">
@@ -116,4 +139,3 @@ export default function SignupPage() {
     </div>
   );
 }
-

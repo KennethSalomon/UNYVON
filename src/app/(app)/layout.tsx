@@ -3,6 +3,7 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { AppProvider } from "@/lib/context/app-context";
+import { OrgProvider } from "@/lib/context/org-context";
 import { useState, useCallback } from "react";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -18,7 +19,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <AppProvider>
-      <div className="flex h-screen overflow-hidden bg-background">
+      <OrgProvider>
+        <div className="flex h-screen overflow-hidden bg-background">
       {/* Mobile overlay */}
       {mobileMenuOpen && (
         <div
@@ -34,8 +36,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <main id="main-content" className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
           <div className="animate-fade-in">{children}</div>
         </main>
-        </div>
       </div>
+      </div>
+      </OrgProvider>
     </AppProvider>
   );
 }

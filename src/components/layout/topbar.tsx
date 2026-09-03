@@ -1,7 +1,8 @@
 ﻿"use client";
 
-import { Search, Bell, Menu } from "lucide-react";
+import { Search, Bell, Menu, LogOut } from "lucide-react";
 import { useApp } from "@/lib/context/app-context";
+import { signOutAction } from "@/lib/supabase/auth-actions";
 import { useState } from "react";
 
 interface TopbarProps {
@@ -62,6 +63,17 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
             <p className="text-xs text-muted leading-tight">{organization.name}</p>
           </div>
         </div>
+
+        <form action={signOutAction}>
+          <button
+            type="submit"
+            aria-label="Se déconnecter"
+            title="Se déconnecter"
+            className="p-2 rounded-[10px] text-muted hover:text-error hover:bg-background transition-colors"
+          >
+            <LogOut className="w-5 h-5" />
+          </button>
+        </form>
       </div>
     </header>
   );

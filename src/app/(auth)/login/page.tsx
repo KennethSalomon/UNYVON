@@ -1,12 +1,19 @@
 ﻿"use client";
 
-import { useState } from "react";
 import Link from "next/link";
+import { useActionState, useState } from "react";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { signInAction, type AuthActionState } from "@/lib/supabase/auth-actions";
+
+const initialState: AuthActionState = { ok: true };
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
+  const [state, formAction, pending] = useActionState(
+    signInAction,
+    initialState
+  );
 
   return (
     <div className="min-h-screen flex">
@@ -40,13 +47,15 @@ export default function LoginPage() {
             Connectez-vous à votre espace UNYVON.
           </p>
 
-          <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+          <form action={formAction} className="space-y-4">
             <div>
               <label className="text-sm font-medium text-text block mb-1.5">
                 Email
               </label>
               <input
+                name="email"
                 type="email"
+                required
                 placeholder="vous@entreprise.com"
                 className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
               />
@@ -57,7 +66,9 @@ export default function LoginPage() {
               </label>
               <div className="relative">
                 <input
+                  name="password"
                   type={showPassword ? "text" : "password"}
+                  required
                   placeholder="••••••••"
                   className="w-full h-11 px-4 pr-10 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                 />
@@ -75,24 +86,17 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm text-muted">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
-                />
-                Se souvenir de moi
-              </label>
-              <a href="#" className="text-sm text-primary hover:text-primary-dark transition-colors">
-                Mot de passe oublié ?
-              </a>
-            </div>
-            <Link href="/dashboard">
-              <Button className="w-full" size="lg">
-                Se connecter
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </Link>
+
+            {!state.ok && (
+              <p role="alert" className="text-sm text-error">
+                {state.error}
+              </p>
+            )}
+
+            <Button type="submit" className="w-full" size="lg" disabled={pending}>
+              {pending ? "Connexion…" : "Se connecter"}
+              {!pending && <ArrowRight className="w-4 h-4" />}
+            </Button>
           </form>
 
           <p className="text-center text-sm text-muted mt-6">
@@ -106,4 +110,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
