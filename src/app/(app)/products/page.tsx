@@ -16,6 +16,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useApp, type NewProductInput } from "@/lib/context/app-context";
+import { useOrg } from "@/lib/context/org-context";
 import { formatFCFA } from "@/lib/utils";
 import {
   getCategories,
@@ -42,6 +43,7 @@ type ViewProduct = {
 
 export default function ProductsPage() {
   const { products: mockProducts, addProduct } = useApp();
+  const { permissions } = useOrg();
   const [products, setProducts] = useState<ViewProduct[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -239,15 +241,17 @@ export default function ProductsPage() {
             )}
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setEditProduct(null);
-            setShowModal(true);
-          }}
-        >
-          <Plus className="w-4 h-4" />
-          Ajouter un produit
-        </Button>
+        {permissions?.canManageProducts && (
+          <Button
+            onClick={() => {
+              setEditProduct(null);
+              setShowModal(true);
+            }}
+          >
+            <Plus className="w-4 h-4" />
+            Ajouter un produit
+          </Button>
+        )}
       </div>
 
       {error && (

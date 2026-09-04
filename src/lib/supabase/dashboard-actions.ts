@@ -74,61 +74,125 @@ export async function getDashboardKPIs(): Promise<DashboardKPIs> {
   const supabase = await createServerSupabase();
   const orgId = await getUserOrgId(supabase);
 
-  const { data: sales } = await supabase
-    .from("sales")
-    .select("id, total_amount, status")
-    .eq("organization_id", orgId)
-    .eq("status", "confirmed");
+  const queryErrors: string[] = [];
+
+  // 1. Confirmed sales
+  let sales: { id: string; total_amount: number; status: string }[] | null = null;
+  try {
+    const result = await supabase
+      .from("sales")
+      .select("id, total_amount, status")
+      .eq("organization_id", orgId)
+      .eq("status", "confirmed");
+    if (result.error) {
+      console.error("[getDashboardKPIs] Failed to fetch confirmed sales:", result.error.message);
+      queryErrors.push("confirmed sales");
+    } else {
+      sales = result.data;
+    }
+  } catch (e) {
+    console.error("[getDashboardKPIs] Unexpected error fetching confirmed sales:", e);
+    queryErrors.push("confirmed sales");
+  }
 
   const totalRevenue = (sales ?? []).reduce((sum, s) => sum + Number(s.total_amount), 0);
   const confirmedSales = (sales ?? []).length;
 
-  const { count: draftSales } = await supabase
-    .from("sales")
-    .select("id", { count: "exact", head: true })
-    .eq("organization_id", orgId)
-    .eq("status", "draft");
+  // 2. Draft sales count
+  let draftSales = 0;
+  try {
+    const result = await supabase
+      .from("sales")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", orgId)
+      .eq("status", "draft");
+    if (result.error) {
+      console.error("[getDashboardKPIs] Failed to fetch draft sales:", result.error.message);
+      queryErrors.push("draft sales");
+    } else {
+      draftSales = result.count ?? 0;
+    }
+  } catch (e) {
+    console.error("[getDashboardKPIs] Unexpected error fetching draft sales:", e);
+    queryErrors.push("draft sales");
+  }
 
+  // 3. Sale items for cost calculation
   let totalCost = 0;
   if (sales && sales.length > 0) {
     const saleIds = sales.map((s) => s.id);
-    const { data: items } = await supabase
-      .from("sale_items")
-      .select("quantity, unit_cost_snapshot, sale_id")
-      .in("sale_id", saleIds);
-
-    totalCost = (items ?? []).reduce(
-      (sum, item) => sum + Number(item.quantity) * Number(item.unit_cost_snapshot),
-      0
-    );
+    try {
+      const result = await supabase
+        .from("sale_items")
+        .select("quantity, unit_cost_snapshot, sale_id")
+        .in("sale_id", saleIds);
+      if (result.error) {
+        console.error("[getDashboardKPIs] Failed to fetch sale items:", result.error.message);
+        queryErrors.push("sale items");
+      } else {
+        totalCost = (result.data ?? []).reduce(
+          (sum, item) => sum + Number(item.quantity) * Number(item.unit_cost_snapshot),
+          0
+        );
+      }
+    } catch (e) {
+      console.error("[getDashboardKPIs] Unexpected error fetching sale items:", e);
+      queryErrors.push("sale items");
+    }
   }
 
   const grossMarginPct = totalRevenue > 0
     ? ((totalRevenue - totalCost) / totalRevenue) * 100
     : 0;
 
-  // Receipts — join payments → sales to filter by org
-  const { data: paymentsData } = await supabase
-    .from("payments")
-    .select("amount, sales(organization_id)")
-    .limit(10000);
-
-  const totalReceipts = (paymentsData ?? [])
-    .filter((p: Record<string, unknown>) => {
-      const sale = p.sales as { organization_id: string } | null;
-      return sale?.organization_id === orgId;
-    })
-    .reduce((sum: number, p: Record<string, unknown>) => sum + Number(p.amount), 0);
+  // 4. Payments / receipts
+  let totalReceipts = 0;
+  try {
+    const result = await supabase
+      .from("payments")
+      .select("amount, sales(organization_id)")
+      .limit(10000);
+    if (result.error) {
+      console.error("[getDashboardKPIs] Failed to fetch payments:", result.error.message);
+      queryErrors.push("payments");
+    } else {
+      totalReceipts = (result.data ?? [])
+        .filter((p: Record<string, unknown>) => {
+          const sale = p.sales as { organization_id: string } | null;
+          return sale?.organization_id === orgId;
+        })
+        .reduce((sum: number, p: Record<string, unknown>) => sum + Number(p.amount), 0);
+    }
+  } catch (e) {
+    console.error("[getDashboardKPIs] Unexpected error fetching payments:", e);
+    queryErrors.push("payments");
+  }
 
   const totalReceivables = totalRevenue - totalReceipts;
 
-  const { data: expenses } = await supabase
-    .from("expenses")
-    .select("amount")
-    .eq("organization_id", orgId);
+  // 5. Expenses
+  let totalExpenses = 0;
+  try {
+    const result = await supabase
+      .from("expenses")
+      .select("amount")
+      .eq("organization_id", orgId);
+    if (result.error) {
+      console.error("[getDashboardKPIs] Failed to fetch expenses:", result.error.message);
+      queryErrors.push("expenses");
+    } else {
+      totalExpenses = (result.data ?? []).reduce((sum, e) => sum + Number(e.amount), 0);
+    }
+  } catch (e) {
+    console.error("[getDashboardKPIs] Unexpected error fetching expenses:", e);
+    queryErrors.push("expenses");
+  }
 
-  const totalExpenses = (expenses ?? []).reduce((sum, e) => sum + Number(e.amount), 0);
   const netCashflow = totalReceipts - totalExpenses;
+
+  if (queryErrors.length === 5) {
+    throw new Error("Échec du chargement des indicateurs: toutes les requêtes ont échoué");
+  }
 
   return {
     totalRevenue,
@@ -139,7 +203,7 @@ export async function getDashboardKPIs(): Promise<DashboardKPIs> {
     totalExpenses,
     netCashflow,
     confirmedSales,
-    draftSales: draftSales ?? 0,
+    draftSales,
   };
 }
 
@@ -151,59 +215,94 @@ export async function getRecentActivity(limit = 8): Promise<ActivityItem[]> {
   const supabase = await createServerSupabase();
   const orgId = await getUserOrgId(supabase);
   const activities: ActivityItem[] = [];
+  const queryErrors: string[] = [];
 
-  const { data: sales } = await supabase
-    .from("sales")
-    .select("id, total_amount, status, sale_date, customers(name)")
-    .eq("organization_id", orgId)
-    .in("status", ["confirmed", "cancelled"])
-    .order("sale_date", { ascending: false })
-    .limit(5);
-
-  for (const s of sales ?? []) {
-    const custName = Array.isArray(s.customers) ? s.customers[0]?.name : (s.customers as { name: string } | null)?.name;
-    activities.push({
-      id: String(s.id),
-      type: "sale",
-      description: `Vente ${s.status === "confirmed" ? "confirmée" : "annulée"}${custName ? ` — ${custName}` : ""}`,
-      amount: Number(s.total_amount),
-      date: String(s.sale_date),
-    });
+  // 1. Sales
+  try {
+    const result = await supabase
+      .from("sales")
+      .select("id, total_amount, status, sale_date, customers(name)")
+      .eq("organization_id", orgId)
+      .in("status", ["confirmed", "cancelled"])
+      .order("sale_date", { ascending: false })
+      .limit(5);
+    if (result.error) {
+      console.error("[getRecentActivity] Failed to fetch sales:", result.error.message);
+      queryErrors.push("sales");
+    } else {
+      for (const s of result.data ?? []) {
+        const custName = Array.isArray(s.customers) ? s.customers[0]?.name : (s.customers as { name: string } | null)?.name;
+        activities.push({
+          id: String(s.id),
+          type: "sale",
+          description: `Vente ${s.status === "confirmed" ? "confirmée" : "annulée"}${custName ? ` — ${custName}` : ""}`,
+          amount: Number(s.total_amount),
+          date: String(s.sale_date),
+        });
+      }
+    }
+  } catch (e) {
+    console.error("[getRecentActivity] Unexpected error fetching sales:", e);
+    queryErrors.push("sales");
   }
 
-  const { data: payments } = await supabase
-    .from("payments")
-    .select("id, amount, payment_date, sales(organization_id)")
-    .order("payment_date", { ascending: false })
-    .limit(5);
-
-  for (const p of payments ?? []) {
-    const sale = Array.isArray(p.sales) ? p.sales[0] : p.sales;
-    if ((sale as { organization_id: string } | null)?.organization_id !== orgId) continue;
-    activities.push({
-      id: String(p.id),
-      type: "payment",
-      description: "Paiement reçu",
-      amount: Number(p.amount),
-      date: String(p.payment_date),
-    });
+  // 2. Payments
+  try {
+    const result = await supabase
+      .from("payments")
+      .select("id, amount, payment_date, sales(organization_id)")
+      .order("payment_date", { ascending: false })
+      .limit(5);
+    if (result.error) {
+      console.error("[getRecentActivity] Failed to fetch payments:", result.error.message);
+      queryErrors.push("payments");
+    } else {
+      for (const p of result.data ?? []) {
+        const sale = Array.isArray(p.sales) ? p.sales[0] : p.sales;
+        if ((sale as { organization_id: string } | null)?.organization_id !== orgId) continue;
+        activities.push({
+          id: String(p.id),
+          type: "payment",
+          description: "Paiement reçu",
+          amount: Number(p.amount),
+          date: String(p.payment_date),
+        });
+      }
+    }
+  } catch (e) {
+    console.error("[getRecentActivity] Unexpected error fetching payments:", e);
+    queryErrors.push("payments");
   }
 
-  const { data: expenses } = await supabase
-    .from("expenses")
-    .select("id, description, amount, expense_date")
-    .eq("organization_id", orgId)
-    .order("expense_date", { ascending: false })
-    .limit(5);
+  // 3. Expenses
+  try {
+    const result = await supabase
+      .from("expenses")
+      .select("id, description, amount, expense_date")
+      .eq("organization_id", orgId)
+      .order("expense_date", { ascending: false })
+      .limit(5);
+    if (result.error) {
+      console.error("[getRecentActivity] Failed to fetch expenses:", result.error.message);
+      queryErrors.push("expenses");
+    } else {
+      for (const e of result.data ?? []) {
+        activities.push({
+          id: String(e.id),
+          type: "expense",
+          description: String(e.description),
+          amount: Number(e.amount),
+          date: String(e.expense_date),
+        });
+      }
+    }
+  } catch (e) {
+    console.error("[getRecentActivity] Unexpected error fetching expenses:", e);
+    queryErrors.push("expenses");
+  }
 
-  for (const e of expenses ?? []) {
-    activities.push({
-      id: String(e.id),
-      type: "expense",
-      description: String(e.description),
-      amount: Number(e.amount),
-      date: String(e.expense_date),
-    });
+  if (queryErrors.length === 3) {
+    throw new Error("Échec du chargement de l'activité récente: toutes les requêtes ont échoué");
   }
 
   activities.sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -218,23 +317,43 @@ export async function getCriticalStock(): Promise<CriticalStockItem[]> {
   const supabase = await createServerSupabase();
   const orgId = await getUserOrgId(supabase);
 
-  const { data: products } = await supabase
-    .from("products")
-    .select("id, name, unit, min_stock_threshold")
-    .eq("organization_id", orgId)
-    .eq("is_active", true);
+  let products: { id: string; name: string; unit: string; min_stock_threshold: number }[] | null = null;
+  try {
+    const result = await supabase
+      .from("products")
+      .select("id, name, unit, min_stock_threshold")
+      .eq("organization_id", orgId)
+      .eq("is_active", true);
+    if (result.error) {
+      console.error("[getCriticalStock] Failed to fetch products:", result.error.message);
+      return [];
+    }
+    products = result.data;
+  } catch (e) {
+    console.error("[getCriticalStock] Unexpected error fetching products:", e);
+    return [];
+  }
 
   if (!products?.length) return [];
 
   const items: CriticalStockItem[] = [];
 
   for (const p of products) {
-    const { data: stockData } = await supabase.rpc("get_product_stock", {
-      p_org_id: orgId,
-      p_product_id: p.id,
-    });
+    let stock = 0;
+    try {
+      const result = await supabase.rpc("get_product_stock", {
+        p_org_id: orgId,
+        p_product_id: p.id,
+      });
+      if (result.error) {
+        console.error(`[getCriticalStock] Failed to fetch stock for product ${p.id}:`, result.error.message);
+      } else {
+        stock = Number(result.data) ?? 0;
+      }
+    } catch (e) {
+      console.error(`[getCriticalStock] Unexpected error fetching stock for product ${p.id}:`, e);
+    }
 
-    const stock = Number(stockData) ?? 0;
     const threshold = Number(p.min_stock_threshold);
     const ratio = threshold > 0 ? stock / threshold : 999;
 
@@ -262,19 +381,40 @@ export async function getTopDebtors(limit = 5): Promise<TopDebtor[]> {
   const supabase = await createServerSupabase();
   const orgId = await getUserOrgId(supabase);
 
-  const { data: sales } = await supabase
-    .from("sales")
-    .select("customer_id, total_amount, id, customers(name)")
-    .eq("organization_id", orgId)
-    .eq("status", "confirmed");
+  let sales: { customer_id: string; total_amount: number; id: string; customers: unknown }[] | null = null;
+  try {
+    const result = await supabase
+      .from("sales")
+      .select("customer_id, total_amount, id, customers(name)")
+      .eq("organization_id", orgId)
+      .eq("status", "confirmed");
+    if (result.error) {
+      console.error("[getTopDebtors] Failed to fetch sales:", result.error.message);
+      return [];
+    }
+    sales = result.data;
+  } catch (e) {
+    console.error("[getTopDebtors] Unexpected error fetching sales:", e);
+    return [];
+  }
 
   if (!sales?.length) return [];
 
   const saleIds = sales.map((s) => String(s.id));
-  const { data: payments } = await supabase
-    .from("payments")
-    .select("sale_id, amount")
-    .in("sale_id", saleIds);
+  let payments: { sale_id: string; amount: number }[] | null = null;
+  try {
+    const result = await supabase
+      .from("payments")
+      .select("sale_id, amount")
+      .in("sale_id", saleIds);
+    if (result.error) {
+      console.error("[getTopDebtors] Failed to fetch payments:", result.error.message);
+    } else {
+      payments = result.data;
+    }
+  } catch (e) {
+    console.error("[getTopDebtors] Unexpected error fetching payments:", e);
+  }
 
   const paidBySale = new Map<string, number>();
   for (const p of payments ?? []) {
@@ -318,18 +458,50 @@ export async function getSalesPerformance(): Promise<MonthlyPerformance[]> {
   twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
   const fromDate = twelveMonthsAgo.toISOString().slice(0, 10);
 
-  const { data: sales } = await supabase
-    .from("sales")
-    .select("total_amount, sale_date")
-    .eq("organization_id", orgId)
-    .eq("status", "confirmed")
-    .gte("sale_date", fromDate);
+  const queryErrors: string[] = [];
 
-  const { data: paymentsData } = await supabase
-    .from("payments")
-    .select("amount, payment_date, sales(organization_id)")
-    .gte("payment_date", fromDate)
-    .limit(10000);
+  // 1. Sales
+  let sales: { total_amount: number; sale_date: string }[] | null = null;
+  try {
+    const result = await supabase
+      .from("sales")
+      .select("total_amount, sale_date")
+      .eq("organization_id", orgId)
+      .eq("status", "confirmed")
+      .gte("sale_date", fromDate);
+    if (result.error) {
+      console.error("[getSalesPerformance] Failed to fetch sales:", result.error.message);
+      queryErrors.push("sales");
+    } else {
+      sales = result.data;
+    }
+  } catch (e) {
+    console.error("[getSalesPerformance] Unexpected error fetching sales:", e);
+    queryErrors.push("sales");
+  }
+
+  // 2. Payments
+  let paymentsData: { amount: number; payment_date: string; sales: unknown }[] | null = null;
+  try {
+    const result = await supabase
+      .from("payments")
+      .select("amount, payment_date, sales(organization_id)")
+      .gte("payment_date", fromDate)
+      .limit(10000);
+    if (result.error) {
+      console.error("[getSalesPerformance] Failed to fetch payments:", result.error.message);
+      queryErrors.push("payments");
+    } else {
+      paymentsData = result.data;
+    }
+  } catch (e) {
+    console.error("[getSalesPerformance] Unexpected error fetching payments:", e);
+    queryErrors.push("payments");
+  }
+
+  if (queryErrors.length === 2) {
+    throw new Error("Échec du chargement de la performance: toutes les requêtes ont échoué");
+  }
 
   const monthMap = new Map<string, { revenue: number; receipts: number }>();
 

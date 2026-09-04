@@ -28,6 +28,7 @@ import { getProducts } from "@/lib/supabase/product-actions";
 import { getCustomers } from "@/lib/supabase/customer-actions";
 import { getOrgStocks } from "@/lib/supabase/inventory-actions";
 import { formatFCFA } from "@/lib/utils";
+import { useOrg } from "@/lib/context/org-context";
 import type {
   SaleWithItems,
   SaleStatus,
@@ -65,6 +66,7 @@ interface CartItem {
 }
 
 export default function SalesPage() {
+  const { permissions } = useOrg();
   const [sales, setSales] = useState<SaleWithItems[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -297,10 +299,12 @@ export default function SalesPage() {
             {sales.length} vente{sales.length !== 1 ? "s" : ""} au total
           </p>
         </div>
-        <Button onClick={() => setShowNewSale(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nouvelle vente
-        </Button>
+        {permissions?.canCreateSale && (
+          <Button onClick={() => setShowNewSale(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nouvelle vente
+          </Button>
+        )}
       </div>
 
       {error && (

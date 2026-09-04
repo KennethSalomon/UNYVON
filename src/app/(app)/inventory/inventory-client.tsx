@@ -16,6 +16,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { ProductStock, InventoryMovement, InventoryCount, AdjustmentReason } from "@/types";
 import { createInventory } from "@/lib/supabase/inventory-actions";
+import { useOrg } from "@/lib/context/org-context";
 
 interface Props {
   stocks: ProductStock[];
@@ -41,6 +42,7 @@ const REASON_LABELS: Record<AdjustmentReason, string> = {
 };
 
 export function InventoryClient({ stocks, movements, history, error }: Props) {
+  const { permissions } = useOrg();
   const [search, setSearch] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
 
@@ -336,7 +338,7 @@ export function InventoryClient({ stocks, movements, history, error }: Props) {
       )}
 
       {/* Inventory form */}
-      {selectedProduct && (
+      {selectedProduct && permissions?.canManageInventory && (
         <InventoryForm
           productId={selectedProduct}
           productName={stocks.find((s) => s.productId === selectedProduct)?.productName ?? ""}

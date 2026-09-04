@@ -16,6 +16,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useApp, type NewCustomerInput } from "@/lib/context/app-context";
+import { useOrg } from "@/lib/context/org-context";
 import { cn, formatFCFA } from "@/lib/utils";
 import {
   getCustomers,
@@ -27,6 +28,7 @@ type ViewCustomer = Customer & { source: "supabase" | "mock" };
 
 export default function CustomersPage() {
   const { customers: mockCustomers, addCustomer } = useApp();
+  const { permissions } = useOrg();
   const [customers, setCustomers] = useState<ViewCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -107,10 +109,12 @@ export default function CustomersPage() {
               : ""}
           </p>
         </div>
-        <Button onClick={() => setShowModal(true)}>
-          <Plus className="w-4 h-4" />
-          Ajouter un client
-        </Button>
+        {permissions?.canManageCustomers && (
+          <Button onClick={() => setShowModal(true)}>
+            <Plus className="w-4 h-4" />
+            Ajouter un client
+          </Button>
+        )}
       </div>
 
       {source === "mock" && !loading && (

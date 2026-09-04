@@ -19,6 +19,13 @@ export interface ActiveOrganization {
   role: Exclude<OrgRole, null>;
 }
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+}
+
 export interface Permissions {
   canManageOrganization: boolean;
   canManageTeam: boolean;
@@ -81,6 +88,7 @@ const ROLE_PERMISSIONS: Record<Exclude<OrgRole, null>, Permissions> = {
 interface OrgContextValue {
   /** null tant que le chargement n'est pas terminé (ou Supabase non configuré). */
   organization: ActiveOrganization | null;
+  user: AuthUser | null;
   role: OrgRole;
   permissions: Permissions | null;
   loading: boolean;
@@ -93,6 +101,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const [organization, setOrganization] = useState<ActiveOrganization | null>(
     null
   );
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
 
@@ -101,26 +110,28 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
     async function load() {
       try {
-        const active = await getActiveOrganizationAction();
+        const result = await getActiveOrganizationAction();
         if (cancelled) return;
-        if (active) {
-          const membership = Array.isArray(active.organization_users)
-            ? active.organization_users[0]
+        if (result?.organization) {
+          const membership = Array.isArray(result.organization.organization_users)
+            ? result.organization.organization_users[0]
             : null;
           const role = (membership?.role ?? null) as Exclude<OrgRole, null>;
           setOrganization({
-            id: active.id,
-            name: active.name,
-            sector: active.sector,
-            currency: active.currency,
+            id: result.organization.id,
+            name: result.organization.name,
+            sector: result.organization.sector,
+            currency: result.organization.currency,
             role,
           });
         } else {
           setOrganization(null);
         }
+        setUser(result?.user ?? null);
       } catch {
         if (cancelled) return;
         setOrganization(null);
+        setUser(null);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -140,6 +151,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const value: OrgContextValue = {
     organization,
+    user,
     role,
     permissions,
     loading,

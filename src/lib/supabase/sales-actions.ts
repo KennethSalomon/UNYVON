@@ -100,6 +100,14 @@ export async function createSale(input: CreateSaleInput): Promise<DatabaseSale> 
 
   if (!org) throw new Error("Aucune organisation");
 
+  const { data: role } = await supabase.rpc("current_org_role", {
+    org_id: org.organization_id,
+  });
+
+  if (!["owner", "manager", "seller"].includes(role)) {
+    throw new Error("Rôle insuffisant pour créer une vente");
+  }
+
   const { data: sale, error: saleErr } = await supabase
     .from("sales")
     .insert({

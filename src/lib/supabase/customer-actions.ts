@@ -30,6 +30,39 @@ function toCustomer(row: DatabaseCustomer, balance?: { totalPurchases: number; o
 }
 
 // ---------------------------------------------------------------------------
+// Role check helper
+// ---------------------------------------------------------------------------
+
+async function requireCustomerRole(
+  supabase: Awaited<ReturnType<typeof createServerSupabase>>,
+  allowedRoles: string[]
+) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Non authentifié");
+
+  const { data: org } = await supabase
+    .from("organization_users")
+    .select("organization_id")
+    .eq("user_id", user.id)
+    .limit(1)
+    .single();
+
+  if (!org) throw new Error("Aucune organisation");
+
+  const { data: role } = await supabase.rpc("current_org_role", {
+    org_id: org.organization_id,
+  });
+
+  if (!allowedRoles.includes(role)) {
+    throw new Error(
+      "Les vendeurs et stockkeepers ne peuvent pas gérer les clients"
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Customers
 // ---------------------------------------------------------------------------
 
@@ -111,6 +144,9 @@ export async function createCustomer(
   }
 
   const supabase = await createServerSupabase();
+
+  await requireCustomerRole(supabase, ["owner", "manager"]);
+
   const { data, error } = await supabase
     .from("customers")
     .insert({
@@ -134,6 +170,9 @@ export async function updateCustomer(
   input: UpdateCustomerInput
 ): Promise<Customer> {
   const supabase = await createServerSupabase();
+
+  await requireCustomerRole(supabase, ["owner", "manager"]);
+
   const updates: Record<string, unknown> = {};
 
   if (input.name !== undefined) updates.name = input.name.trim();

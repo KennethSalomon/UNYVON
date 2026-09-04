@@ -9,6 +9,7 @@ import { getPurchases, createPurchase, receivePurchase, cancelPurchase } from "@
 import { getSuppliers } from "@/lib/supabase/supplier-actions";
 import { getProducts } from "@/lib/supabase/product-actions";
 import { formatFCFA } from "@/lib/utils";
+import { useOrg } from "@/lib/context/org-context";
 import type { Purchase, PurchaseStatus, Supplier, Product, CreatePurchaseInput } from "@/types";
 
 const STATUS_LABELS: Record<PurchaseStatus, { label: string; variant: "default" | "success" | "error" | "warning" }> = {
@@ -18,6 +19,7 @@ const STATUS_LABELS: Record<PurchaseStatus, { label: string; variant: "default" 
 };
 
 export default function PurchasesPage() {
+  const { permissions } = useOrg();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,10 +80,12 @@ export default function PurchasesPage() {
             {loading ? "Chargement..." : `${purchases.length} achat${purchases.length > 1 ? "s" : ""}`}
           </p>
         </div>
-        <Button onClick={() => setShowModal(true)}>
-          <Plus className="w-4 h-4" />
-          Nouvel achat
-        </Button>
+        {permissions?.canManageInventory && (
+          <Button onClick={() => setShowModal(true)}>
+            <Plus className="w-4 h-4" />
+            Nouvel achat
+          </Button>
+        )}
       </div>
 
       {error && (

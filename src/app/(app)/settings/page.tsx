@@ -6,28 +6,46 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
 import { useApp } from "@/lib/context/app-context";
+import { useOrg } from "@/lib/context/org-context";
+import { updateOrganizationAction } from "@/lib/supabase/org-actions";
 
 export default function SettingsPage() {
-  const { organization, updateOrganization } = useApp();
-  const [name, setName] = useState(organization.name);
-  const [sector, setSector] = useState(organization.sector);
-  const [currency, setCurrency] = useState(organization.currency);
+  const { organization: appOrg, updateOrganization } = useApp();
+  const { organization, user } = useOrg();
+  const [name, setName] = useState(organization?.name ?? appOrg.name);
+  const [sector, setSector] = useState(organization?.sector ?? appOrg.sector);
+  const [currency, setCurrency] = useState(organization?.currency ?? appOrg.currency);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
+  const currentOrg = organization ?? appOrg;
   const dirty =
-    name !== organization.name ||
-    sector !== organization.sector ||
-    currency !== organization.currency;
+    name !== currentOrg.name ||
+    sector !== currentOrg.sector ||
+    currency !== currentOrg.currency;
 
-  const handleSave = () => {
-    updateOrganization({
-      name: name.trim() || organization.name,
-      sector: sector.trim() || organization.sector,
-      currency: currency.trim() || organization.currency,
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+  const handleSave = async () => {
+    setSaving(true);
+    const patch = {
+      name: name.trim() || currentOrg.name,
+      sector: sector.trim() || currentOrg.sector,
+      currency: currency.trim() || currentOrg.currency,
+    };
+
+    updateOrganization(patch);
+
+    try {
+      await updateOrganizationAction(patch);
+    } catch {
+      // L'action serveur a échoué, mais l'état local est déjà à jour
+    } finally {
+      setSaving(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    }
   };
+
+  const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Utilisateur";
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -76,9 +94,13 @@ export default function SettingsPage() {
             </div>
           </div>
           <div className="mt-5 flex items-center gap-3">
-            <Button onClick={handleSave} disabled={!dirty}>
-              {saved ? <Check className="w-4 h-4" /> : null}
-              {saved ? "Enregistré" : "Enregistrer"}
+            <Button onClick={handleSave} disabled={!dirty || saving}>
+              {saving ? (
+                <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : saved ? (
+                <Check className="w-4 h-4" />
+              ) : null}
+              {saving ? "Enregistrement..." : saved ? "Enregistré" : "Enregistrer"}
             </Button>
             <span className="text-xs text-muted">
               Ces informations apparaissent dans le menu et l&apos;en-tête.
@@ -95,19 +117,22 @@ export default function SettingsPage() {
               <label className="text-xs text-muted block mb-1">Nom complet</label>
               <input
                 type="text"
-                defaultValue="Patrick TOGNON"
-                className="w-full h-10 px-3 rounded-[10px] border border-border bg-background text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                defaultValue={displayName}
+                readOnly
+                className="w-full h-10 px-3 rounded-[10px] border border-border bg-background text-sm text-text focus:outline-none cursor-not-allowed opacity-70"
               />
             </div>
             <div>
               <label className="text-xs text-muted block mb-1">Email</label>
               <input
                 type="email"
-                defaultValue="patrick@agrodistrib.bj"
-                className="w-full h-10 px-3 rounded-[10px] border border-border bg-background text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                defaultValue={user?.email ?? ""}
+                readOnly
+                className="w-full h-10 px-3 rounded-[10px] border border-border bg-background text-sm text-text focus:outline-none cursor-not-allowed opacity-70"
               />
             </div>
           </div>
+          <p className="text-xs text-muted mt-3">Le profil est géré via votre compte Supabase Auth.</p>
         </CardContent>
       </Card>
     </div>

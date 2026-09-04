@@ -247,11 +247,23 @@ export async function getNovaInsights(): Promise<NovaInsight[]> {
   const insights: NovaInsight[] = [];
 
   for (const signal of signals) {
-    const response = await generateNovaResponse({
-      orgId,
-      signal,
-      evidence: signal.evidence,
-    });
+    let response: NovaResponse;
+
+    try {
+      response = await generateNovaResponse({
+        orgId,
+        signal,
+        evidence: signal.evidence,
+      });
+    } catch (err) {
+      console.error(`[NOVA] LLM failed for signal ${signal.id}:`, err);
+      response = {
+        signal,
+        explanation: signal.title,
+        recommendation: "Analyse déterministe — consultez les données pour agir.",
+        actions: [],
+      };
+    }
 
     insights.push({
       id: signal.id,

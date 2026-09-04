@@ -20,22 +20,30 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { useOrg, type Permissions } from "@/lib/context/org-context";
 
-const navItems = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  permission?: keyof Permissions;
+}
+
+const navItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/sales", label: "Ventes", icon: ShoppingCart },
-  { href: "/products", label: "Produits", icon: Package },
-  { href: "/inventory", label: "Stock", icon: Warehouse },
-  { href: "/purchases", label: "Achats", icon: Truck },
-  { href: "/customers", label: "Clients", icon: Users },
-  { href: "/expenses", label: "Dépenses", icon: Receipt },
+  { href: "/sales", label: "Ventes", icon: ShoppingCart, permission: "canCreateSale" },
+  { href: "/products", label: "Produits", icon: Package, permission: "canManageProducts" },
+  { href: "/inventory", label: "Stock", icon: Warehouse, permission: "canManageInventory" },
+  { href: "/purchases", label: "Achats", icon: Truck, permission: "canManageInventory" },
+  { href: "/customers", label: "Clients", icon: Users, permission: "canManageCustomers" },
+  { href: "/expenses", label: "Dépenses", icon: Receipt, permission: "canManageOrganization" },
 ];
 
-const bottomItems = [
+const bottomItems: NavItem[] = [
   { href: "/insights", label: "NOVA", icon: Sparkles },
-  { href: "/team", label: "Équipe", icon: UserCog },
-  { href: "/settings", label: "Paramètres", icon: Settings },
-  { href: "/billing", label: "Abonnement", icon: CreditCard },
+  { href: "/team", label: "Équipe", icon: UserCog, permission: "canManageTeam" },
+  { href: "/settings", label: "Paramètres", icon: Settings, permission: "canManageOrganization" },
+  { href: "/billing", label: "Abonnement", icon: CreditCard, permission: "canManageBilling" },
 ];
 
 interface SidebarProps {
@@ -46,6 +54,14 @@ interface SidebarProps {
 export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const { permissions } = useOrg();
+
+  const visibleNavItems = navItems.filter(
+    (item) => !item.permission || permissions?.[item.permission]
+  );
+  const visibleBottomItems = bottomItems.filter(
+    (item) => !item.permission || permissions?.[item.permission]
+  );
 
   return (
     <>
@@ -56,7 +72,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
           collapsed ? "w-[68px]" : "w-[240px]"
         )}
       >
-        <SidebarContent pathname={pathname} collapsed={collapsed} onToggleCollapse={() => setCollapsed(!collapsed)} />
+        <SidebarContent pathname={pathname} collapsed={collapsed} onToggleCollapse={() => setCollapsed(!collapsed)} navItems={visibleNavItems} bottomItems={visibleBottomItems} />
       </aside>
 
       {/* Mobile sidebar */}
@@ -81,7 +97,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
             <X className="w-5 h-5" />
           </button>
         </div>
-        <SidebarContent pathname={pathname} collapsed={false} onLinkClick={onClose} />
+        <SidebarContent pathname={pathname} collapsed={false} onLinkClick={onClose} navItems={visibleNavItems} bottomItems={visibleBottomItems} />
       </aside>
     </>
   );
@@ -90,11 +106,13 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
 interface SidebarContentProps {
   pathname: string;
   collapsed: boolean;
+  navItems: NavItem[];
+  bottomItems: NavItem[];
   onToggleCollapse?: () => void;
   onLinkClick?: () => void;
 }
 
-function SidebarContent({ pathname, collapsed, onToggleCollapse, onLinkClick }: SidebarContentProps) {
+function SidebarContent({ pathname, collapsed, navItems, bottomItems, onToggleCollapse, onLinkClick }: SidebarContentProps) {
   return (
     <>
       {!collapsed && (

@@ -87,6 +87,17 @@ export async function signInAction(
     return { ok: false, error: error.message };
   }
 
+  // Check if user already has an organization
+  const { data: membership } = await supabase
+    .from("organization_users")
+    .select("organization_id")
+    .limit(1)
+    .maybeSingle();
+
+  if (membership?.organization_id) {
+    redirect("/dashboard");
+  }
+
   redirect("/onboarding");
 }
 

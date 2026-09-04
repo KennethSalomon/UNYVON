@@ -1,11 +1,11 @@
 ﻿"use client";
 
 import { useRef, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, ArrowRight, Building2, Package, Users, ShoppingCart, Sparkles, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppProvider, useApp } from "@/lib/context/app-context";
-import { createOrganizationAction } from "@/lib/supabase/org-actions";
+import { createOrganizationAction, syncOnboardingData } from "@/lib/supabase/org-actions";
 import { cn, formatFCFA } from "@/lib/utils";
 
 const steps = [
@@ -28,6 +28,7 @@ export default function OnboardingPage() {
 
 function OnboardingInner() {
   const { organization, updateOrganization, products, customers, addProduct, addCustomer, addSale } = useApp();
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
   const [orgName, setOrgName] = useState(organization.name);
   const [sector, setSector] = useState(organization.sector);
@@ -42,7 +43,16 @@ function OnboardingInner() {
   const [saleCustomerId, setSaleCustomerId] = useState("");
   const [saleQty, setSaleQty] = useState<Record<string, number>>({});
   const [orgError, setOrgError] = useState("");
+  const [syncing, setSyncing] = useState(false);
   const orgCreatedRef = useRef(false);
+  const syncedRef = useRef(false);
+  const [pendingSale, setPendingSale] = useState<{
+    customerId: string | null;
+    customerName: string;
+    items: { productId: string; quantity: number; total: number }[];
+    total: number;
+    amountPaid: number;
+  } | null>(null);
 
   const progress = (currentStep / steps.length) * 100;
 
@@ -439,14 +449,18 @@ function OnboardingInner() {
                   handleFinishStep1();
                 } else if (currentStep === 6) {
                   if (!canStep6) return;
-                  addSale({
+                  const saleData = {
                     customerId: saleCustomerId || null,
                     customerName: saleCustomer?.name ?? "Client comptoir",
                     items: cartItems,
                     total: saleTotal,
-                    paymentType: "cash",
                     amountPaid: saleTotal,
+                  };
+                  addSale({
+                    ...saleData,
+                    paymentType: "cash",
                   });
+                  setPendingSale(saleData);
                   setCurrentStep(7);
                 } else {
                   setCurrentStep(currentStep + 1);
@@ -461,12 +475,50 @@ function OnboardingInner() {
               <ArrowRight className="w-4 h-4" />
             </Button>
           ) : (
-            <Link href="/dashboard" className="flex-1">
-              <Button className="w-full" size="lg">
-                Accéder au dashboard
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </Link>
+            <Button
+              className="flex-1"
+              size="lg"
+              disabled={syncing}
+              onClick={async () => {
+                if (syncedRef.current) {
+                  router.push("/dashboard");
+                  return;
+                }
+                setSyncing(true);
+                try {
+                  await syncOnboardingData({
+                    products: products.map((p) => ({
+                      name: p.name,
+                      unit: p.unit,
+                      costPrice: p.costPrice,
+                      salePrice: p.salePrice,
+                      minStockThreshold: p.minStockThreshold,
+                      categoryId: p.categoryId,
+                    })),
+                    customers: customers.map((c) => ({
+                      name: c.name,
+                      phone: c.phone,
+                      email: c.email,
+                      address: c.address,
+                      notes: c.notes,
+                    })),
+                    sale: pendingSale ?? undefined,
+                  });
+                  syncedRef.current = true;
+                } catch {
+                  // En cas d'échec, on redirige quand même
+                } finally {
+                  router.push("/dashboard");
+                }
+              }}
+            >
+              {syncing ? (
+                <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : (
+                "Accéder au dashboard"
+              )}
+              <ArrowRight className="w-4 h-4" />
+            </Button>
           )}
         </div>
       </div>

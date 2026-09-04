@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getExpenses, createExpense, updateExpense, deleteExpense } from "@/lib/supabase/expense-actions";
 import { formatFCFA } from "@/lib/utils";
+import { useOrg } from "@/lib/context/org-context";
 import type { DatabaseExpense, ExpenseCategory, DatabasePaymentMethod } from "@/types";
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
@@ -39,6 +40,7 @@ const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
 };
 
 export default function ExpensesPage() {
+  const { permissions } = useOrg();
   const [expenses, setExpenses] = useState<DatabaseExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -132,10 +134,12 @@ export default function ExpensesPage() {
             )}
           </p>
         </div>
-        <Button onClick={() => setShowCreateModal(true)}>
-          <Plus className="w-4 h-4" />
-          Nouvelle dépense
-        </Button>
+        {permissions?.canManageOrganization && (
+          <Button onClick={() => setShowCreateModal(true)}>
+            <Plus className="w-4 h-4" />
+            Nouvelle dépense
+          </Button>
+        )}
       </div>
 
       {/* Filtres */}

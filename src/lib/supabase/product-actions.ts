@@ -44,6 +44,39 @@ function toProduct(row: DatabaseProduct): Product {
 }
 
 // ---------------------------------------------------------------------------
+// Role check helper
+// ---------------------------------------------------------------------------
+
+async function requireProductRole(
+  supabase: Awaited<ReturnType<typeof createServerSupabase>>,
+  allowedRoles: string[]
+) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Non authentifié");
+
+  const { data: org } = await supabase
+    .from("organization_users")
+    .select("organization_id")
+    .eq("user_id", user.id)
+    .limit(1)
+    .single();
+
+  if (!org) throw new Error("Aucune organisation");
+
+  const { data: role } = await supabase.rpc("current_org_role", {
+    org_id: org.organization_id,
+  });
+
+  if (!allowedRoles.includes(role)) {
+    throw new Error("Les vendeurs ne peuvent pas gérer les produits");
+  }
+
+  return { orgId: org.organization_id as string };
+}
+
+// ---------------------------------------------------------------------------
 // Categories
 // ---------------------------------------------------------------------------
 
@@ -136,6 +169,8 @@ export async function createProduct(
   if (input.costPrice < 0) throw new Error("Le coût ne peut pas être négatif.");
   if (input.minStockThreshold < 0) throw new Error("Le seuil ne peut pas être négatif.");
 
+  await requireProductRole(supabase, ["owner", "manager", "stockkeeper"]);
+
   const { data, error } = await supabase
     .from("products")
     .insert({
@@ -158,6 +193,8 @@ export async function updateProduct(
 ): Promise<Product> {
   const supabase = await createServerSupabase();
   const { id, ...fields } = input;
+
+  await requireProductRole(supabase, ["owner", "manager", "stockkeeper"]);
 
   const update: Record<string, unknown> = {};
   if (fields.name !== undefined) update.name = fields.name.trim();
