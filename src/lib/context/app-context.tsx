@@ -15,7 +15,6 @@ import type {
   Supplier,
   Sale,
   Purchase,
-  Expense,
   Payment,
   Insight,
 } from "@/types";
@@ -26,7 +25,6 @@ import {
   suppliers as initialSuppliers,
   sales as initialSales,
   purchases as initialPurchases,
-  expenses as initialExpenses,
 } from "@/lib/mock/data";
 
 export interface NewSaleInput {
@@ -43,13 +41,6 @@ export interface NewPurchaseInput {
   supplierName: string;
   items: { productId: string; quantity: number; total: number }[];
   total: number;
-}
-
-export interface NewExpenseInput {
-  category: string;
-  description: string;
-  amount: number;
-  date: string;
 }
 
 export interface NewProductInput {
@@ -85,12 +76,10 @@ interface AppContextValue {
   suppliers: Supplier[];
   sales: Sale[];
   purchases: Purchase[];
-  expenses: Expense[];
   payments: Payment[];
   insights: Insight[];
   addSale: (input: NewSaleInput) => Sale;
   addPurchase: (input: NewPurchaseInput) => Purchase;
-  addExpense: (input: NewExpenseInput) => Expense;
   addProduct: (input: NewProductInput) => Product;
   addCustomer: (input: NewCustomerInput) => Customer;
   addSupplier: (input: NewSupplierInput) => Supplier;
@@ -117,7 +106,6 @@ interface PersistedState {
   customers: Customer[];
   sales: Sale[];
   purchases: Purchase[];
-  expenses: Expense[];
   payments: Payment[];
 }
 
@@ -135,7 +123,6 @@ function getDefaults(): PersistedState {
     suppliers: initialSuppliers,
     sales: initialSales,
     purchases: initialPurchases,
-    expenses: initialExpenses,
     payments: [],
   };
 }
@@ -288,18 +275,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return purchase;
     };
 
-    const addExpense = (input: NewExpenseInput): Expense => {
-      const expense: Expense = {
-        id: makeId("exp"),
-        category: input.category,
-        description: input.description,
-        amount: input.amount,
-        date: input.date,
-      };
-      setState((prev) => ({ ...prev, expenses: [expense, ...prev.expenses] }));
-      return expense;
-    };
-
     const addProduct = (input: NewProductInput): Product => {
       const now = new Date().toISOString();
       const product: Product = {
@@ -418,12 +393,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       suppliers: state.suppliers,
       sales: state.sales,
       purchases: state.purchases,
-      expenses: state.expenses,
       payments: state.payments,
       insights: computeInsights(state),
       addSale,
       addPurchase,
-      addExpense,
       addProduct,
       addCustomer,
       addSupplier,
