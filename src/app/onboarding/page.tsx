@@ -51,31 +51,40 @@ function OnboardingInner() {
     const finalSector = sector.trim() || organization.sector;
     const finalCurrency = currency.trim() || organization.currency;
 
+    // On avance immédiatement au step 2 : le parcours ne doit JAMAIS dépendre
+    // du résultat backend (sinon un appel lent/en échec gèle le questionnaire).
+    setCurrentStep(2);
+    updateOrganization({ name, sector: finalSector, currency: finalCurrency });
+
     if (!orgCreatedRef.current) {
       orgCreatedRef.current = true;
-      const res = await createOrganizationAction({
-        name,
-        sector: finalSector,
-        currency: finalCurrency,
-      });
-      if (res.ok) {
-        setOrgError("");
-      } else {
-        // Backend indisponible (dev sans Supabase) : on revient au mock pour
-        // ne pas bloquer le parcours hors-auth.
+      try {
+        const res = await createOrganizationAction({
+          name,
+          sector: finalSector,
+          currency: finalCurrency,
+        });
+        if (res.ok) {
+          setOrgError("");
+        } else {
+          // Backend indisponible (dev sans Supabase) : le parcours continue
+          // avec l'état local (mock), sans jamais rester bloqué.
+          orgCreatedRef.current = false;
+          setOrgError(
+            res.error === "UNAUTHENTICATED"
+              ? "Vous devez être connecté pour créer votre entreprise."
+              : res.error === "NOT_CONFIGURED"
+              ? "Backend non configuré : entreprise enregistrée localement (démo)."
+              : res.error
+          );
+        }
+      } catch {
         orgCreatedRef.current = false;
         setOrgError(
-          res.error === "UNAUTHENTICATED"
-            ? "Vous devez être connecté pour créer votre entreprise."
-            : res.error === "NOT_CONFIGURED"
-            ? "Backend non configuré : entreprise enregistrée localement (démo)."
-            : res.error
+          "Une erreur est survenue lors de la sauvegarde. Vous pouvez continuer, il sera réessayé plus tard."
         );
       }
     }
-
-    updateOrganization({ name, sector: finalSector, currency: finalCurrency });
-    setCurrentStep(2);
   };
 
   const canStep1 = orgName.trim().length > 0;
@@ -211,7 +220,7 @@ function OnboardingInner() {
 
           {currentStep === 3 && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <input
                   type="text"
                   value={newProductName}
@@ -219,35 +228,38 @@ function OnboardingInner() {
                   placeholder="Nom du produit"
                   className="flex-1 h-10 px-3 rounded-[10px] border border-border bg-background text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
-                <input
-                  type="number"
-                  min="0"
-                  value={newProductPrice === 0 ? "" : newProductPrice}
-                  onChange={(e) => setNewProductPrice(Math.max(0, Number(e.target.value) || 0))}
-                  placeholder="Prix"
-                  aria-label="Prix de vente"
-                  className="w-24 h-10 px-3 rounded-[10px] border border-border bg-background text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                />
-                <Button
-                  size="sm"
-                  disabled={!canStep3}
-                  onClick={() => {
-                    addProduct({
-                      name: newProductName.trim(),
-                      unit: "unité",
-                      costPrice: 0,
-                      salePrice: newProductPrice,
-                      stockQuantity: 0,
-                      minStockThreshold: 0,
-                      categoryId: "cat-autre",
-                    });
-                    setNewProductName("");
-                    setNewProductPrice(0);
-                  }}
-                >
-                  <Plus className="w-4 h-4" />
-                  Ajouter
-                </Button>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    value={newProductPrice === 0 ? "" : newProductPrice}
+                    onChange={(e) => setNewProductPrice(Math.max(0, Number(e.target.value) || 0))}
+                    placeholder="Prix"
+                    aria-label="Prix de vente"
+                    className="flex-1 w-24 h-10 px-3 rounded-[10px] border border-border bg-background text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                  <Button
+                    size="sm"
+                    disabled={!canStep3}
+                    onClick={() => {
+                      addProduct({
+                        name: newProductName.trim(),
+                        unit: "unité",
+                        costPrice: 0,
+                        salePrice: newProductPrice,
+                        stockQuantity: 0,
+                        minStockThreshold: 0,
+                        categoryId: "cat-autre",
+                      });
+                      setNewProductName("");
+                      setNewProductPrice(0);
+                    }}
+                    className="shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Ajouter
+                  </Button>
+                </div>
               </div>
               {products.length > 0 && (
                 <div className="mt-2 space-y-2">
