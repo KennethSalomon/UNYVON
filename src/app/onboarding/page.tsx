@@ -37,8 +37,10 @@ function OnboardingInner() {
 
   const [newProductName, setNewProductName] = useState("");
   const [newProductPrice, setNewProductPrice] = useState(0);
+  const [newProductCost, setNewProductCost] = useState(0);
 
   const [newCustomerName, setNewCustomerName] = useState("");
+  const [stockQuantities, setStockQuantities] = useState<Record<string, number>>({});
 
   const [saleCustomerId, setSaleCustomerId] = useState("");
   const [saleQty, setSaleQty] = useState<Record<string, number>>({});
@@ -98,7 +100,7 @@ function OnboardingInner() {
   };
 
   const canStep1 = orgName.trim().length > 0;
-  const canStep3 = newProductName.trim().length > 0 && newProductPrice > 0;
+  const canStep3 = newProductName.trim().length > 0 && newProductPrice > 0 && newProductCost >= 0;
 
   const cartItems = products
     .filter((p) => (saleQty[p.id] ?? 0) > 0)
@@ -159,7 +161,7 @@ function OnboardingInner() {
         <p className="text-sm text-muted text-center mb-8">
           {currentStep === 1 && "Nommez votre entreprise et choisissez votre secteur."}
           {currentStep === 2 && "Décrivez brièvement votre activité pour personnaliser l'expérience."}
-          {currentStep === 3 && "Ajoutez vos produits ou importez-les depuis un fichier CSV."}
+          {currentStep === 3 && "Ajoutez vos produits avec leur coût et prix de vente."}
           {currentStep === 4 && "Définissez le stock initial de chaque produit."}
           {currentStep === 5 && "Ajoutez vos clients ou importez-les."}
           {currentStep === 6 && "Enregistrez votre première vente pour voir le système en action."}
@@ -242,6 +244,15 @@ function OnboardingInner() {
                   <input
                     type="number"
                     min="0"
+                    value={newProductCost === 0 ? "" : newProductCost}
+                    onChange={(e) => setNewProductCost(Math.max(0, Number(e.target.value) || 0))}
+                    placeholder="Coût"
+                    aria-label="Prix de cost"
+                    className="flex-1 w-24 h-10 px-3 rounded-[10px] border border-border bg-background text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                  <input
+                    type="number"
+                    min="0"
                     value={newProductPrice === 0 ? "" : newProductPrice}
                     onChange={(e) => setNewProductPrice(Math.max(0, Number(e.target.value) || 0))}
                     placeholder="Prix"
@@ -255,7 +266,7 @@ function OnboardingInner() {
                       addProduct({
                         name: newProductName.trim(),
                         unit: "unité",
-                        costPrice: 0,
+                        costPrice: newProductCost,
                         salePrice: newProductPrice,
                         stockQuantity: 0,
                         minStockThreshold: 0,
@@ -263,6 +274,7 @@ function OnboardingInner() {
                       });
                       setNewProductName("");
                       setNewProductPrice(0);
+                      setNewProductCost(0);
                     }}
                     className="shrink-0"
                   >
@@ -280,7 +292,9 @@ function OnboardingInner() {
                     >
                       <div>
                         <p className="text-sm font-medium text-ink">{p.name}</p>
-                        <p className="text-xs text-muted">{formatFCFA(p.salePrice)}</p>
+                        <p className="text-xs text-muted">
+                          Coût: {formatFCFA(p.costPrice)} — Vente: {formatFCFA(p.salePrice)}
+                        </p>
                       </div>
                       <CheckCircle2 className="w-4 h-4 text-success" />
                     </div>
@@ -293,17 +307,30 @@ function OnboardingInner() {
           {currentStep === 4 && (
             <div className="space-y-2">
               <p className="text-sm text-muted mb-2">
-                Vérifiez le stock initial de vos produits.
+                Définissez le stock initial de chaque produit.
               </p>
               {products.map((p) => (
                 <div
                   key={p.id}
-                  className="flex items-center justify-between p-3 rounded-[10px] border border-border"
+                  className="flex items-center justify-between gap-3 p-3 rounded-[10px] border border-border"
                 >
                   <p className="text-sm font-medium text-ink">{p.name}</p>
-                  <p className="text-sm text-muted">
-                    {p.stockQuantity} {p.unit || "unité"}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={stockQuantities[p.id] ?? 0}
+                      onChange={(e) =>
+                        setStockQuantities((prev) => ({
+                          ...prev,
+                          [p.id]: Math.max(0, Number(e.target.value) || 0),
+                        }))
+                      }
+                      aria-label={`Stock initial pour ${p.name}`}
+                      className="w-20 h-9 px-2 rounded-[8px] border border-border text-sm text-center text-ink focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                    <span className="text-xs text-muted">{p.unit || "unité"}</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -494,6 +521,7 @@ function OnboardingInner() {
                       salePrice: p.salePrice,
                       minStockThreshold: p.minStockThreshold,
                       categoryId: p.categoryId,
+                      stockQuantity: stockQuantities[p.id] ?? 0,
                     })),
                     customers: customers.map((c) => ({
                       name: c.name,

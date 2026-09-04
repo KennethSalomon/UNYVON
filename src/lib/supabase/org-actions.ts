@@ -127,11 +127,15 @@ export type SyncOnboardingState =
   | { ok: false; error: "UNAUTHENTICATED" | "NOT_CONFIGURED" };
 
 /**
- * Synchronise les données d'onboarding (produits, clients, vente) vers Supabase.
- * Appelée une seule fois à la fin de l'onboarding.
+ * Synchronise les données d'onboarding (produits, clients, stock initial,
+ * vente) vers Supabase en utilisant les mêmes moteurs métier que les
+ * pages normales.
+ *
+ * Idempotence : si des produits du même nom existent déjà pour l'org,
+ * on les réutilise au lieu d'en créer de nouveaux.
  */
 export async function syncOnboardingData(input: {
-  products: { name: string; unit: string; costPrice: number; salePrice: number; minStockThreshold: number; categoryId: string | null }[];
+  products: { name: string; unit: string; costPrice: number; salePrice: number; minStockThreshold: number; categoryId: string | null; stockQuantity?: number }[];
   customers: { name: string; phone: string; email: string; address: string; notes: string }[];
   sale?: {
     customerId: string | null;
@@ -169,9 +173,26 @@ export async function syncOnboardingData(input: {
 
   const orgId = org.organization_id;
 
-  // Sync products
+  // ── 1. Sync products (idempotent: skip if name already exists) ──
   const productIds = new Map<string, string>();
+
   for (const product of input.products) {
+    const normalizedName = product.name.trim().toLowerCase();
+
+    // Check if product already exists (idempotency)
+    const { data: existing } = await supabase
+      .from("products")
+      .select("id")
+      .eq("organization_id", orgId)
+      .ilike("name", product.name.trim())
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      productIds.set(normalizedName, existing.id);
+      continue;
+    }
+
     const { data, error } = await supabase
       .from("products")
       .insert({
@@ -189,12 +210,64 @@ export async function syncOnboardingData(input: {
     if (error) {
       return { ok: false, error: `Erreur produit "${product.name}": ${error.message}` };
     }
-    productIds.set(product.name.toLowerCase().trim(), data.id);
+    productIds.set(normalizedName, data.id);
   }
 
-  // Sync customers
+  // ── 2. Stock initial via inventory_movements (opening) ──
+  for (const product of input.products) {
+    const qty = product.stockQuantity ?? 0;
+    if (qty <= 0) continue;
+
+    const productId = productIds.get(product.name.trim().toLowerCase());
+    if (!productId) continue;
+
+    // Check if opening movement already exists (idempotency)
+    const { data: existingMovement } = await supabase
+      .from("inventory_movements")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("product_id", productId)
+      .eq("movement_type", "opening")
+      .limit(1)
+      .maybeSingle();
+
+    if (existingMovement) continue;
+
+    const { error: movErr } = await supabase
+      .from("inventory_movements")
+      .insert({
+        organization_id: orgId,
+        product_id: productId,
+        movement_type: "opening",
+        quantity: qty,
+        unit_cost: product.costPrice,
+        notes: "Stock initial — onboarding",
+      });
+
+    if (movErr) {
+      return { ok: false, error: `Erreur stock initial "${product.name}": ${movErr.message}` };
+    }
+  }
+
+  // ── 3. Sync customers (idempotent: skip if name already exists) ──
   const customerIds = new Map<string, string>();
+
   for (const customer of input.customers) {
+    const normalizedName = customer.name.trim().toLowerCase();
+
+    const { data: existing } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("organization_id", orgId)
+      .ilike("name", customer.name.trim())
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      customerIds.set(normalizedName, existing.id);
+      continue;
+    }
+
     const { data, error } = await supabase
       .from("customers")
       .insert({
@@ -211,47 +284,130 @@ export async function syncOnboardingData(input: {
     if (error) {
       return { ok: false, error: `Erreur client "${customer.name}": ${error.message}` };
     }
-    customerIds.set(customer.name.toLowerCase().trim(), data.id);
+    customerIds.set(normalizedName, data.id);
   }
 
-  // Sync sale if provided
+  // ── 4. Première vente via le moteur métier (create → confirm) ──
   if (input.sale && input.sale.items.length > 0) {
     const saleCustomerId = input.sale.customerId
       ? customerIds.get(input.sale.customerId.toLowerCase().trim()) ?? input.sale.customerId
       : null;
 
-    const { data: sale, error: saleErr } = await supabase
+    // Check if a sale already exists for this org with same total (idempotency)
+    const { data: existingSale } = await supabase
       .from("sales")
-      .insert({
-        organization_id: orgId,
-        customer_id: saleCustomerId,
-        sale_date: new Date().toISOString().split("T")[0],
-        status: "confirmed",
-        created_by: user.id,
-      })
-      .select("id")
-      .single();
+      .select("id, status")
+      .eq("organization_id", orgId)
+      .eq("total_amount", input.sale.total)
+      .eq("status", "confirmed")
+      .limit(1)
+      .maybeSingle();
 
-    if (saleErr) {
-      return { ok: false, error: `Erreur vente: ${saleErr.message}` };
-    }
+    if (!existingSale) {
+      // Create sale as draft (same as createSale server action)
+      const { data: sale, error: saleErr } = await supabase
+        .from("sales")
+        .insert({
+          organization_id: orgId,
+          customer_id: saleCustomerId,
+          sale_date: new Date().toISOString().split("T")[0],
+          status: "draft",
+          created_by: user.id,
+        })
+        .select("id")
+        .single();
 
-    // Insert sale items
-    const saleItems = input.sale.items.map((item) => ({
-      sale_id: sale.id,
-      product_id: item.productId,
-      quantity: item.quantity,
-      unit_price: item.quantity > 0 ? item.total / item.quantity : 0,
-      unit_cost_snapshot: 0,
-    }));
+      if (saleErr) {
+        return { ok: false, error: `Erreur vente: ${saleErr.message}` };
+      }
 
-    const { error: itemsErr } = await supabase.from("sale_items").insert(saleItems);
-    if (itemsErr) {
-      return { ok: false, error: `Erreur lignes vente: ${itemsErr.message}` };
+      // Insert sale items with proper unit_price
+      const saleItems = input.sale.items.map((item) => ({
+        sale_id: sale.id,
+        product_id: item.productId,
+        quantity: item.quantity,
+        unit_price: item.quantity > 0 ? item.total / item.quantity : 0,
+        unit_cost_snapshot: 0,
+      }));
+
+      const { error: itemsErr } = await supabase.from("sale_items").insert(saleItems);
+      if (itemsErr) {
+        return { ok: false, error: `Erreur lignes vente: ${itemsErr.message}` };
+      }
+
+      // Confirm via RPC (creates stock movement, sets cost snapshot, validates)
+      const { error: confirmErr } = await supabase.rpc("confirm_sale", {
+        p_sale_id: sale.id,
+      });
+
+      if (confirmErr) {
+        return { ok: false, error: `Erreur confirmation vente: ${confirmErr.message}` };
+      }
+
+      // Record payment if amount > 0
+      if (input.sale.amountPaid > 0) {
+        const { error: payErr } = await supabase.rpc("create_payment", {
+          p_sale_id: sale.id,
+          p_amount: input.sale.amountPaid,
+          p_payment_method: "cash",
+          p_reference: "Paiement initial — onboarding",
+          p_notes: "Paiement enregistré lors de l'onboarding",
+        });
+
+        // Payment error is non-fatal — sale is still valid
+        if (payErr) {
+          console.error("Onboarding payment error:", payErr.message);
+        }
+      }
     }
   }
 
   return { ok: true };
+}
+
+export async function getSubscriptionAction() {
+  let supabase;
+  try {
+    supabase = await createServerSupabase();
+  } catch {
+    return null;
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  const { data: org } = await supabase
+    .from("organization_users")
+    .select("organization_id")
+    .eq("user_id", user.id)
+    .limit(1)
+    .maybeSingle();
+
+  if (!org) return null;
+
+  const { data: sub } = await supabase
+    .from("subscriptions")
+    .select("status, trial_start, trial_end, plan")
+    .eq("organization_id", org.organization_id)
+    .limit(1)
+    .maybeSingle();
+
+  if (!sub) return null;
+
+  const now = Date.now();
+  const trialEnd = sub.trial_end ? new Date(sub.trial_end).getTime() : 0;
+  const daysRemaining = trialEnd > 0 ? Math.max(0, Math.ceil((trialEnd - now) / 86400000)) : 0;
+
+  return {
+    status: sub.status as string,
+    trialStart: sub.trial_start as string | null,
+    trialEnd: sub.trial_end as string | null,
+    plan: sub.plan as string | null,
+    daysRemaining,
+  };
 }
 
 /**

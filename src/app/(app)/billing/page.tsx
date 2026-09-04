@@ -1,9 +1,30 @@
 "use client";
 
-import { CheckCircle2, CreditCard, Clock } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { getSubscriptionAction } from "@/lib/supabase/org-actions";
+
+type SubscriptionInfo = {
+  status: string;
+  trialStart: string | null;
+  trialEnd: string | null;
+  plan: string | null;
+  daysRemaining: number;
+};
 
 export default function BillingPage() {
+  const [sub, setSub] = useState<SubscriptionInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getSubscriptionAction().then((s) => {
+      setSub(s);
+      setLoading(false);
+    });
+  }, []);
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
@@ -13,7 +34,79 @@ export default function BillingPage() {
         </p>
       </div>
 
-      {/* Coming soon card */}
+      {/* Subscription status */}
+      {loading ? (
+        <Card variant="elevated">
+          <CardContent>
+            <div className="flex items-center gap-3">
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm text-muted">Chargement…</p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : sub ? (
+        <Card variant="elevated" className="border-primary/20">
+          <CardContent>
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-[12px] bg-lavender-soft flex items-center justify-center shrink-0">
+                {sub.status === "trialing" ? (
+                  <Clock className="w-6 h-6 text-primary" />
+                ) : sub.status === "active" ? (
+                  <CheckCircle2 className="w-6 h-6 text-success" />
+                ) : (
+                  <AlertTriangle className="w-6 h-6 text-warning" />
+                )}
+              </div>
+              <div className="space-y-2 flex-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="font-display font-semibold text-lg text-ink">
+                    {sub.status === "trialing"
+                      ? "Essai gratuit"
+                      : sub.status === "active"
+                        ? "Abonnement actif"
+                        : "Abonnement inactif"}
+                  </h2>
+                  <Badge variant={sub.status === "trialing" ? "info" : sub.status === "active" ? "success" : "warning"}>
+                    {sub.status}
+                  </Badge>
+                </div>
+                {sub.status === "trialing" && sub.trialEnd && (
+                  <p className="text-sm text-muted">
+                    {sub.daysRemaining > 0
+                      ? `${sub.daysRemaining} jour${sub.daysRemaining > 1 ? "s" : ""} restant${sub.daysRemaining > 1 ? "s" : ""}`
+                      : "L'essai est terminé"}
+                    {" — "}
+                    se termine le {new Date(sub.trialEnd).toLocaleDateString("fr-FR")}
+                  </p>
+                )}
+                {sub.plan && (
+                  <p className="text-xs text-muted">Plan actuel : {sub.plan}</p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card variant="elevated">
+          <CardContent>
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-[12px] bg-lavender-soft flex items-center justify-center shrink-0">
+                <Clock className="w-6 h-6 text-primary" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="font-display font-semibold text-lg text-ink">
+                  Aucun abonnement
+                </h2>
+                <p className="text-sm text-muted leading-relaxed">
+                  Vous n&apos;avez pas encore d&apos;abonnement. Créez une organisation pour démarrer votre essai gratuit de 14 jours.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Coming soon */}
       <Card variant="elevated" className="border-primary/20">
         <CardContent>
           <div className="flex items-start gap-4">

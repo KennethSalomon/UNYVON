@@ -226,10 +226,12 @@ export default function LandingPage() {
                   <ArrowRight className="w-5 h-5" />
                 </Button>
               </Link>
-              <Button variant="outline" size="lg">
-                Voir la démo
-                <ChevronRight className="w-5 h-5" />
-              </Button>
+              <Link href="/demo">
+                <Button variant="outline" size="lg">
+                  Voir la démo
+                  <ChevronRight className="w-5 h-5" />
+                </Button>
+              </Link>
             </div>
             <p className="mt-4 text-sm text-muted">
               Essai gratuit de 14 jours. Sans carte bancaire.
