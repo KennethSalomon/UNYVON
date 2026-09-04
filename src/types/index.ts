@@ -469,3 +469,66 @@ export interface CreatePaymentInput {
   notes?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Expenses + Cashflow (Phase 2H)
+// ---------------------------------------------------------------------------
+
+export type ExpenseCategory =
+  | "rent"
+  | "transport"
+  | "personnel"
+  | "electricity"
+  | "communication"
+  | "supplies"
+  | "maintenance"
+  | "other";
+
+export interface DatabaseExpense {
+  id: string;
+  organization_id: string;
+  category: ExpenseCategory;
+  description: string;
+  amount: number;
+  expense_date: string;
+  payment_method: DatabasePaymentMethod;
+  reference: string | null;
+  notes: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExpenseSummary {
+  total: number;
+  expense_count: number;
+  category: ExpenseCategory;
+  category_total: number;
+}
+
+export interface CashflowSummary {
+  total_receipts: number;
+  total_expenses: number;
+  net_cashflow: number;
+}
+
+export interface CreateExpenseInput {
+  category: ExpenseCategory;
+  description: string;
+  amount: number;
+  expense_date?: string;
+  payment_method: DatabasePaymentMethod;
+  reference?: string;
+  notes?: string;
+}
+
+export interface UpdateExpenseInput {
+  id: string;
+  category?: ExpenseCategory;
+  description?: string;
+  amount?: number;
+  expense_date?: string;
+  payment_method?: DatabasePaymentMethod;
+  reference?: string;
+  notes?: string;
+}
+
