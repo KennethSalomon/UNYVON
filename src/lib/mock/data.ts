@@ -18,6 +18,7 @@ export const organization: Organization = {
 export const products: Product[] = [
   {
     id: "prod-1",
+    organizationId: "org-1",
     name: "Riz 25kg",
     unit: "sac",
     costPrice: 18000,
@@ -25,9 +26,13 @@ export const products: Product[] = [
     stockQuantity: 340,
     minStockThreshold: 100,
     categoryId: "cat-cereales",
+    isActive: true,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
   },
   {
     id: "prod-2",
+    organizationId: "org-1",
     name: "Huile 5L",
     unit: "bidon",
     costPrice: 12000,
@@ -35,9 +40,13 @@ export const products: Product[] = [
     stockQuantity: 85,
     minStockThreshold: 40,
     categoryId: "cat-huiles",
+    isActive: true,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
   },
   {
     id: "prod-3",
+    organizationId: "org-1",
     name: "Maïs 50kg",
     unit: "sac",
     costPrice: 22000,
@@ -45,9 +54,13 @@ export const products: Product[] = [
     stockQuantity: 120,
     minStockThreshold: 50,
     categoryId: "cat-cereales",
+    isActive: true,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
   },
   {
     id: "prod-4",
+    organizationId: "org-1",
     name: "Soja 50kg",
     unit: "sac",
     costPrice: 25000,
@@ -55,9 +68,13 @@ export const products: Product[] = [
     stockQuantity: 15,
     minStockThreshold: 30,
     categoryId: "cat-cereales",
+    isActive: true,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
   },
   {
     id: "prod-5",
+    organizationId: "org-1",
     name: "Aliment bétail 50kg",
     unit: "sac",
     costPrice: 19000,
@@ -65,6 +82,9 @@ export const products: Product[] = [
     stockQuantity: 60,
     minStockThreshold: 25,
     categoryId: "cat-betail",
+    isActive: true,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
   },
 ];
 

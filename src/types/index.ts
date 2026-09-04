@@ -5,15 +5,79 @@
   currency: string;
 }
 
+export interface Category {
+  id: string;
+  organizationId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Product {
   id: string;
+  organizationId: string;
   name: string;
   unit: string;
   costPrice: number;
   salePrice: number;
   stockQuantity: number;
   minStockThreshold: number;
-  categoryId: string;
+  categoryId: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCategoryInput {
+  name: string;
+}
+
+export interface UpdateCategoryInput {
+  id: string;
+  name: string;
+}
+
+export interface CreateProductInput {
+  name: string;
+  unit: string;
+  costPrice: number;
+  salePrice: number;
+  minStockThreshold: number;
+  categoryId: string | null;
+}
+
+export interface UpdateProductInput {
+  id: string;
+  name?: string;
+  unit?: string;
+  costPrice?: number;
+  salePrice?: number;
+  minStockThreshold?: number;
+  categoryId?: string | null;
+  isActive?: boolean;
+}
+
+// Supabase DB row types (snake_case)
+export interface DatabaseCategory {
+  id: string;
+  organization_id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatabaseProduct {
+  id: string;
+  organization_id: string;
+  category_id: string | null;
+  name: string;
+  unit: string;
+  cost_price: number;
+  sale_price: number;
+  min_stock_threshold: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Customer {

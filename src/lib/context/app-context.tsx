@@ -274,8 +274,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const addProduct = (input: NewProductInput): Product => {
+      const now = new Date().toISOString();
       const product: Product = {
         id: makeId("prod"),
+        organizationId: state.organization.id,
         name: input.name,
         unit: input.unit,
         costPrice: input.costPrice,
@@ -283,6 +285,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         stockQuantity: input.stockQuantity,
         minStockThreshold: input.minStockThreshold,
         categoryId: input.categoryId,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
       };
       setState((prev) => ({ ...prev, products: [...prev.products, product] }));
       return product;

@@ -1,34 +1,267 @@
 ﻿"use client";
 
-import { useState } from "react";
-import { Plus, Search, Package, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  Plus,
+  Search,
+  Package,
+  X,
+  Pencil,
+  Archive,
+  RotateCcw,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useApp, type NewProductInput } from "@/lib/context/app-context";
-import { cn, formatFCFA } from "@/lib/utils";
+import { formatFCFA } from "@/lib/utils";
+import {
+  getCategories,
+  getProducts,
+  createProduct,
+  updateProduct,
+  archiveProduct,
+  restoreProduct,
+} from "@/lib/supabase/product-actions";
+import type { Category } from "@/types";
+
+type ViewProduct = {
+  id: string;
+  name: string;
+  unit: string;
+  costPrice: number;
+  salePrice: number;
+  stockQuantity: number;
+  minStockThreshold: number;
+  categoryId: string | null;
+  isActive: boolean;
+  source: "supabase" | "mock";
+};
 
 export default function ProductsPage() {
-  const { products, addProduct } = useApp();
+  const { products: mockProducts, addProduct } = useApp();
+  const [products, setProducts] = useState<ViewProduct[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [source, setSource] = useState<"supabase" | "mock">("mock");
   const [showModal, setShowModal] = useState(false);
+  const [editProduct, setEditProduct] = useState<ViewProduct | null>(null);
   const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      setError("");
+      try {
+        const [prods, cats] = await Promise.all([getProducts(), getCategories()]);
+        if (cancelled) return;
+        const view: ViewProduct[] = prods.map((p) => ({
+          id: p.id,
+          name: p.name,
+          unit: p.unit,
+          costPrice: p.costPrice,
+          salePrice: p.salePrice,
+          stockQuantity: 0,
+          minStockThreshold: p.minStockThreshold,
+          categoryId: p.categoryId,
+          isActive: p.isActive,
+          source: "supabase" as const,
+        }));
+        setProducts(view);
+        setCategories(cats);
+        setSource("supabase");
+      } catch {
+        if (cancelled) return;
+        const fallback: ViewProduct[] = mockProducts.map((p) => ({
+          id: p.id,
+          name: p.name,
+          unit: p.unit,
+          costPrice: p.costPrice,
+          salePrice: p.salePrice,
+          stockQuantity: p.stockQuantity,
+          minStockThreshold: p.minStockThreshold,
+          categoryId: p.categoryId,
+          isActive: true,
+          source: "mock" as const,
+        }));
+        setProducts(fallback);
+        setSource("mock");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [mockProducts]);
 
   const filtered = products.filter((p) =>
     p.name.toLowerCase().includes(query.toLowerCase())
   );
 
+  const activeProducts = filtered.filter((p) => p.isActive);
+  const archivedProducts = filtered.filter((p) => !p.isActive);
+
+  const handleCreate = async (input: NewProductInput) => {
+    if (source === "supabase") {
+      try {
+        const created = await createProduct({
+          name: input.name,
+          unit: input.unit,
+          costPrice: input.costPrice,
+          salePrice: input.salePrice,
+          minStockThreshold: input.minStockThreshold,
+          categoryId: input.categoryId || null,
+        });
+        setProducts((prev) => [
+          {
+            id: created.id,
+            name: created.name,
+            unit: created.unit,
+            costPrice: created.costPrice,
+            salePrice: created.salePrice,
+            stockQuantity: 0,
+            minStockThreshold: created.minStockThreshold,
+            categoryId: created.categoryId,
+            isActive: created.isActive,
+            source: "supabase" as const,
+          },
+          ...prev,
+        ]);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Erreur création");
+      }
+    } else {
+      addProduct(input);
+    }
+  };
+
+  const handleUpdate = async (input: NewProductInput) => {
+    if (!editProduct || source !== "supabase") return;
+    try {
+      const updated = await updateProduct({
+        id: editProduct.id,
+        name: input.name,
+        unit: input.unit,
+        costPrice: input.costPrice,
+        salePrice: input.salePrice,
+        minStockThreshold: input.minStockThreshold,
+        categoryId: input.categoryId || null,
+      });
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === updated.id
+            ? {
+                ...p,
+                name: updated.name,
+                unit: updated.unit,
+                costPrice: updated.costPrice,
+                salePrice: updated.salePrice,
+                minStockThreshold: updated.minStockThreshold,
+                categoryId: updated.categoryId,
+              }
+            : p
+        )
+      );
+      setEditProduct(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur modification");
+    }
+  };
+
+  const handleArchive = async (id: string) => {
+    if (source !== "supabase") return;
+    try {
+      await archiveProduct(id);
+      setProducts((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, isActive: false } : p))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur archivage");
+    }
+  };
+
+  const handleRestore = async (id: string) => {
+    if (source !== "supabase") return;
+    try {
+      await restoreProduct(id);
+      setProducts((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, isActive: true } : p))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur restauration");
+    }
+  };
+
+  const getCategoryName = (id: string | null) => {
+    if (!id) return "—";
+    return categories.find((c) => c.id === id)?.name ?? "—";
+  };
+
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="font-display text-2xl font-bold text-ink">
+              Produits
+            </h1>
+          </div>
+        </div>
+        <Card variant="elevated">
+          <div className="flex items-center justify-center py-16 gap-3 text-muted">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span className="text-sm">Chargement des produits...</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-ink">Produits</h1>
-          <p className="text-sm text-muted mt-1">{products.length} produits en catalogue</p>
+          <h1 className="font-display text-2xl font-bold text-ink">
+            Produits
+          </h1>
+          <p className="text-sm text-muted mt-1">
+            {activeProducts.length} produit(s) actif(s)
+            {archivedProducts.length > 0 &&
+              ` · ${archivedProducts.length} archivé(s)`}
+            {source === "supabase" && (
+              <span className="ml-2 text-xs text-primary">(Supabase)</span>
+            )}
+          </p>
         </div>
-        <Button onClick={() => setShowModal(true)}>
+        <Button
+          onClick={() => {
+            setEditProduct(null);
+            setShowModal(true);
+          }}
+        >
           <Plus className="w-4 h-4" />
           Ajouter un produit
         </Button>
       </div>
+
+      {error && (
+        <div className="flex items-center gap-2 p-3 rounded-[10px] bg-error/10 text-error text-sm">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {error}
+          <button
+            onClick={() => setError("")}
+            className="ml-auto p-1 rounded hover:bg-error/20"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 h-9 px-3 rounded-[10px] border border-border bg-surface max-w-sm">
         <Search className="w-4 h-4 text-muted" />
@@ -47,21 +280,40 @@ export default function ProductsPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left text-xs font-medium text-muted px-6 py-3">Produit</th>
-                <th className="text-left text-xs font-medium text-muted px-6 py-3">Unité</th>
-                <th className="text-right text-xs font-medium text-muted px-6 py-3">Coût</th>
-                <th className="text-right text-xs font-medium text-muted px-6 py-3">Prix vente</th>
-                <th className="text-right text-xs font-medium text-muted px-6 py-3">Marge</th>
-                <th className="text-right text-xs font-medium text-muted px-6 py-3">Stock</th>
-                <th className="text-center text-xs font-medium text-muted px-6 py-3">Statut</th>
+                <th className="text-left text-xs font-medium text-muted px-6 py-3">
+                  Produit
+                </th>
+                <th className="text-left text-xs font-medium text-muted px-6 py-3">
+                  Catégorie
+                </th>
+                <th className="text-left text-xs font-medium text-muted px-6 py-3">
+                  Unité
+                </th>
+                <th className="text-right text-xs font-medium text-muted px-6 py-3">
+                  Coût
+                </th>
+                <th className="text-right text-xs font-medium text-muted px-6 py-3">
+                  Prix vente
+                </th>
+                <th className="text-right text-xs font-medium text-muted px-6 py-3">
+                  Marge
+                </th>
+                <th className="text-center text-xs font-medium text-muted px-6 py-3">
+                  Statut
+                </th>
+                <th className="text-center text-xs font-medium text-muted px-6 py-3">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((product) => {
-                const margin = ((product.salePrice - product.costPrice) / product.costPrice) * 100;
-                const stockRatio = product.stockQuantity / product.minStockThreshold;
-                const stockStatus =
-                  stockRatio <= 0.5 ? "critical" : stockRatio <= 1 ? "warning" : "normal";
+              {activeProducts.map((product) => {
+                const margin =
+                  product.costPrice > 0
+                    ? ((product.salePrice - product.costPrice) /
+                        product.costPrice) *
+                      100
+                    : 0;
 
                 return (
                   <tr
@@ -73,10 +325,17 @@ export default function ProductsPage() {
                         <div className="w-9 h-9 rounded-[10px] bg-lavender-soft flex items-center justify-center">
                           <Package className="w-4 h-4 text-primary" />
                         </div>
-                        <span className="text-sm font-medium text-ink">{product.name}</span>
+                        <span className="text-sm font-medium text-ink">
+                          {product.name}
+                        </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-muted">{product.unit}</td>
+                    <td className="px-6 py-4 text-sm text-muted">
+                      {getCategoryName(product.categoryId)}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted">
+                      {product.unit}
+                    </td>
                     <td className="px-6 py-4 text-right text-sm text-text">
                       {formatFCFA(product.costPrice)}
                     </td>
@@ -88,44 +347,44 @@ export default function ProductsPage() {
                         {margin.toFixed(1)} %
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <span
-                        className={cn(
-                          "text-sm font-semibold",
-                          stockStatus === "critical"
-                            ? "text-error"
-                            : stockStatus === "warning"
-                            ? "text-warning"
-                            : "text-ink"
-                        )}
-                      >
-                        {product.stockQuantity} {product.unit}
-                      </span>
+                    <td className="px-6 py-4 text-center">
+                      <Badge variant="success">Actif</Badge>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <Badge
-                        variant={
-                          stockStatus === "critical"
-                            ? "error"
-                            : stockStatus === "warning"
-                            ? "warning"
-                            : "success"
-                        }
-                      >
-                        {stockStatus === "critical"
-                          ? "Critique"
-                          : stockStatus === "warning"
-                          ? "Bas"
-                          : "OK"}
-                      </Badge>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => {
+                            setEditProduct(product);
+                            setShowModal(true);
+                          }}
+                          aria-label={`Modifier ${product.name}`}
+                          className="p-1.5 rounded-[10px] text-muted hover:text-primary hover:bg-primary/10 transition-colors"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        {source === "supabase" && (
+                          <button
+                            onClick={() => handleArchive(product.id)}
+                            aria-label={`Archiver ${product.name}`}
+                            className="p-1.5 rounded-[10px] text-muted hover:text-error hover:bg-error/10 transition-colors"
+                          >
+                            <Archive className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
               })}
-              {filtered.length === 0 && (
+              {activeProducts.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center text-sm text-muted">
-                    Aucun produit trouvé.
+                  <td
+                    colSpan={8}
+                    className="px-6 py-10 text-center text-sm text-muted"
+                  >
+                    {query
+                      ? "Aucun produit trouvé pour cette recherche."
+                      : "Aucun produit. Ajoutez votre premier produit."}
                   </td>
                 </tr>
               )}
@@ -134,29 +393,108 @@ export default function ProductsPage() {
         </div>
       </Card>
 
+      {archivedProducts.length > 0 && (
+        <details className="group">
+          <summary className="cursor-pointer text-sm text-muted hover:text-text transition-colors">
+            Produits archivés ({archivedProducts.length})
+          </summary>
+          <Card variant="elevated" className="mt-3">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left text-xs font-medium text-muted px-6 py-3">
+                      Produit
+                    </th>
+                    <th className="text-left text-xs font-medium text-muted px-6 py-3">
+                      Unité
+                    </th>
+                    <th className="text-right text-xs font-medium text-muted px-6 py-3">
+                      Coût
+                    </th>
+                    <th className="text-right text-xs font-medium text-muted px-6 py-3">
+                      Prix vente
+                    </th>
+                    <th className="text-center text-xs font-medium text-muted px-6 py-3">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {archivedProducts.map((product) => (
+                    <tr
+                      key={product.id}
+                      className="border-b border-border last:border-0 opacity-60"
+                    >
+                      <td className="px-6 py-3 text-sm text-text">
+                        {product.name}
+                      </td>
+                      <td className="px-6 py-3 text-sm text-muted">
+                        {product.unit}
+                      </td>
+                      <td className="px-6 py-3 text-right text-sm text-text">
+                        {formatFCFA(product.costPrice)}
+                      </td>
+                      <td className="px-6 py-3 text-right text-sm text-text">
+                        {formatFCFA(product.salePrice)}
+                      </td>
+                      <td className="px-6 py-3 text-center">
+                        <button
+                          onClick={() => handleRestore(product.id)}
+                          aria-label={`Restaurer ${product.name}`}
+                          className="p-1.5 rounded-[10px] text-muted hover:text-success hover:bg-success/10 transition-colors"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </details>
+      )}
+
       {showModal && (
-        <ProductModal onClose={() => setShowModal(false)} onSave={addProduct} />
+        <ProductModal
+          categories={categories}
+          editProduct={editProduct}
+          onClose={() => {
+            setShowModal(false);
+            setEditProduct(null);
+          }}
+          onSave={editProduct ? handleUpdate : handleCreate}
+        />
       )}
     </div>
   );
 }
 
 function ProductModal({
+  categories,
+  editProduct,
   onClose,
   onSave,
 }: {
+  categories: Category[];
+  editProduct: ViewProduct | null;
   onClose: () => void;
   onSave: (input: NewProductInput) => void;
 }) {
-  const [name, setName] = useState("");
-  const [unit, setUnit] = useState("sac");
-  const [costPrice, setCostPrice] = useState(0);
-  const [salePrice, setSalePrice] = useState(0);
-  const [stockQuantity, setStockQuantity] = useState(0);
-  const [minStockThreshold, setMinStockThreshold] = useState(0);
+  const [name, setName] = useState(editProduct?.name ?? "");
+  const [unit, setUnit] = useState(editProduct?.unit ?? "sac");
+  const [costPrice, setCostPrice] = useState(editProduct?.costPrice ?? 0);
+  const [salePrice, setSalePrice] = useState(editProduct?.salePrice ?? 0);
+  const [minStockThreshold, setMinStockThreshold] = useState(
+    editProduct?.minStockThreshold ?? 0
+  );
+  const [categoryId, setCategoryId] = useState<string>(
+    editProduct?.categoryId ?? ""
+  );
 
-  const canSubmit =
-    name.trim().length > 0 && salePrice > 0 && stockQuantity > 0;
+  const isEdit = !!editProduct;
+  const canSubmit = name.trim().length > 0 && salePrice > 0;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -165,9 +503,9 @@ function ProductModal({
       unit,
       costPrice,
       salePrice,
-      stockQuantity,
+      stockQuantity: 0,
       minStockThreshold,
-      categoryId: "cat-autre",
+      categoryId: categoryId || "",
     });
     onClose();
   };
@@ -177,13 +515,19 @@ function ProductModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Ajouter un produit"
+      aria-label={isEdit ? "Modifier un produit" : "Ajouter un produit"}
     >
       <div className="bg-surface rounded-card border border-border shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-border flex items-start justify-between">
           <div>
-            <h2 className="font-display font-semibold text-lg text-ink">Ajouter un produit</h2>
-            <p className="text-sm text-muted mt-1">Référencer un article au catalogue</p>
+            <h2 className="font-display font-semibold text-lg text-ink">
+              {isEdit ? "Modifier le produit" : "Ajouter un produit"}
+            </h2>
+            <p className="text-sm text-muted mt-1">
+              {isEdit
+                ? "Mettre à jour les informations du produit"
+                : "Référencer un article au catalogue"}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -196,7 +540,10 @@ function ProductModal({
 
         <div className="p-6 space-y-4">
           <div>
-            <label htmlFor="prod-name" className="text-sm font-medium text-text block mb-1.5">
+            <label
+              htmlFor="prod-name"
+              className="text-sm font-medium text-text block mb-1.5"
+            >
               Nom
             </label>
             <input
@@ -209,9 +556,34 @@ function ProductModal({
             />
           </div>
 
+          <div>
+            <label
+              htmlFor="prod-category"
+              className="text-sm font-medium text-text block mb-1.5"
+            >
+              Catégorie
+            </label>
+            <select
+              id="prod-category"
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            >
+              <option value="">Aucune catégorie</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="prod-unit" className="text-sm font-medium text-text block mb-1.5">
+              <label
+                htmlFor="prod-unit"
+                className="text-sm font-medium text-text block mb-1.5"
+              >
                 Unité
               </label>
               <input
@@ -223,7 +595,10 @@ function ProductModal({
               />
             </div>
             <div>
-              <label htmlFor="prod-cost" className="text-sm font-medium text-text block mb-1.5">
+              <label
+                htmlFor="prod-cost"
+                className="text-sm font-medium text-text block mb-1.5"
+              >
                 Coût d&apos;achat (FCFA)
               </label>
               <input
@@ -231,7 +606,9 @@ function ProductModal({
                 type="number"
                 min="0"
                 value={costPrice === 0 ? "" : costPrice}
-                onChange={(e) => setCostPrice(Math.max(0, Number(e.target.value) || 0))}
+                onChange={(e) =>
+                  setCostPrice(Math.max(0, Number(e.target.value) || 0))
+                }
                 placeholder="0"
                 className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
@@ -240,7 +617,10 @@ function ProductModal({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="prod-sale" className="text-sm font-medium text-text block mb-1.5">
+              <label
+                htmlFor="prod-sale"
+                className="text-sm font-medium text-text block mb-1.5"
+              >
                 Prix de vente (FCFA)
               </label>
               <input
@@ -248,13 +628,18 @@ function ProductModal({
                 type="number"
                 min="0"
                 value={salePrice === 0 ? "" : salePrice}
-                onChange={(e) => setSalePrice(Math.max(0, Number(e.target.value) || 0))}
+                onChange={(e) =>
+                  setSalePrice(Math.max(0, Number(e.target.value) || 0))
+                }
                 placeholder="0"
                 className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
             <div>
-              <label htmlFor="prod-threshold" className="text-sm font-medium text-text block mb-1.5">
+              <label
+                htmlFor="prod-threshold"
+                className="text-sm font-medium text-text block mb-1.5"
+              >
                 Seuil d&apos;alerte
               </label>
               <input
@@ -262,26 +647,15 @@ function ProductModal({
                 type="number"
                 min="0"
                 value={minStockThreshold === 0 ? "" : minStockThreshold}
-                onChange={(e) => setMinStockThreshold(Math.max(0, Number(e.target.value) || 0))}
+                onChange={(e) =>
+                  setMinStockThreshold(
+                    Math.max(0, Number(e.target.value) || 0)
+                  )
+                }
                 placeholder="0"
                 className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
-          </div>
-
-          <div>
-            <label htmlFor="prod-stock" className="text-sm font-medium text-text block mb-1.5">
-              Stock initial
-            </label>
-            <input
-              id="prod-stock"
-              type="number"
-              min="0"
-              value={stockQuantity === 0 ? "" : stockQuantity}
-              onChange={(e) => setStockQuantity(Math.max(0, Number(e.target.value) || 0))}
-              placeholder="0"
-              className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
           </div>
         </div>
 
@@ -290,12 +664,10 @@ function ProductModal({
             Annuler
           </Button>
           <Button onClick={handleSubmit} disabled={!canSubmit}>
-            Ajouter
+            {isEdit ? "Enregistrer" : "Ajouter"}
           </Button>
         </div>
       </div>
     </div>
   );
 }
-
-

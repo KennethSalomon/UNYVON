@@ -20,11 +20,13 @@ export interface ActiveOrganization {
 }
 
 export interface Permissions {
-  canManageOrganization: boolean; // settings + org update
-  canManageTeam: boolean; // invited/manage members (+ roles)
+  canManageOrganization: boolean;
+  canManageTeam: boolean;
   canCreateSale: boolean;
-  canManageInventory: boolean; // produits + stock + achats
+  canManageInventory: boolean;
   canManageBilling: boolean;
+  canManageProducts: boolean;
+  canManageCategories: boolean;
 }
 
 const ROLE_PERMISSIONS: Record<Exclude<OrgRole, null>, Permissions> = {
@@ -34,6 +36,8 @@ const ROLE_PERMISSIONS: Record<Exclude<OrgRole, null>, Permissions> = {
     canCreateSale: true,
     canManageInventory: true,
     canManageBilling: true,
+    canManageProducts: true,
+    canManageCategories: true,
   },
   manager: {
     canManageOrganization: true,
@@ -41,6 +45,8 @@ const ROLE_PERMISSIONS: Record<Exclude<OrgRole, null>, Permissions> = {
     canCreateSale: true,
     canManageInventory: true,
     canManageBilling: false,
+    canManageProducts: true,
+    canManageCategories: true,
   },
   seller: {
     canManageOrganization: false,
@@ -48,6 +54,8 @@ const ROLE_PERMISSIONS: Record<Exclude<OrgRole, null>, Permissions> = {
     canCreateSale: true,
     canManageInventory: false,
     canManageBilling: false,
+    canManageProducts: false,
+    canManageCategories: false,
   },
   stockkeeper: {
     canManageOrganization: false,
@@ -55,6 +63,8 @@ const ROLE_PERMISSIONS: Record<Exclude<OrgRole, null>, Permissions> = {
     canCreateSale: false,
     canManageInventory: true,
     canManageBilling: false,
+    canManageProducts: true,
+    canManageCategories: false,
   },
 };
 
