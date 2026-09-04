@@ -129,13 +129,12 @@ export async function updateSupplier(
   return toSupplier(data as DatabaseSupplier);
 }
 
-export async function deleteSupplier(id: string): Promise<void> {
-  const supabase = await createServerSupabase();
-  const { error } = await supabase.from("suppliers").delete().eq("id", id);
+// L'archivage (is_active=false) est privilégié à la suppression physique afin de
+// conserver l'historique des achats rattachés à un fournisseur.
+export async function archiveSupplier(id: string): Promise<Supplier> {
+  return updateSupplier({ id, isActive: false });
+}
 
-  if (error) {
-    throw new Error(
-      `Erreur lors de la suppression du fournisseur: ${error.message}`
-    );
-  }
+export async function restoreSupplier(id: string): Promise<Supplier> {
+  return updateSupplier({ id, isActive: true });
 }

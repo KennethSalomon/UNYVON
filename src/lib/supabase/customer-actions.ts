@@ -124,13 +124,12 @@ export async function updateCustomer(
   return toCustomer(data as DatabaseCustomer);
 }
 
-export async function deleteCustomer(id: string): Promise<void> {
-  const supabase = await createServerSupabase();
-  const { error } = await supabase.from("customers").delete().eq("id", id);
+// L'archivage (is_active=false) est privilégié à la suppression physique afin de
+// conserver l'historique des ventes/achats rattachés à un client.
+export async function archiveCustomer(id: string): Promise<Customer> {
+  return updateCustomer({ id, isActive: false });
+}
 
-  if (error) {
-    throw new Error(
-      `Erreur lors de la suppression du client: ${error.message}`
-    );
-  }
+export async function restoreCustomer(id: string): Promise<Customer> {
+  return updateCustomer({ id, isActive: true });
 }
