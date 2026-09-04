@@ -82,18 +82,94 @@ export interface DatabaseProduct {
 
 export interface Customer {
   id: string;
+  organizationId: string;
   name: string;
   phone: string;
+  email: string;
   address: string;
+  notes: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
   totalPurchases: number;
   outstandingBalance: number;
 }
 
 export interface Supplier {
   id: string;
+  organizationId: string;
   name: string;
   phone: string;
+  email: string;
+  address: string;
+  notes: string;
   products: string[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCustomerInput {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  notes: string;
+}
+
+export interface UpdateCustomerInput {
+  id: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  notes?: string;
+  isActive?: boolean;
+}
+
+export interface CreateSupplierInput {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  notes: string;
+}
+
+export interface UpdateSupplierInput {
+  id: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  notes?: string;
+  isActive?: boolean;
+}
+
+// Supabase DB row types (snake_case)
+export interface DatabaseCustomer {
+  id: string;
+  organization_id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatabaseSupplier {
+  id: string;
+  organization_id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Sale {

@@ -304,7 +304,9 @@ function OnboardingInner() {
                     addCustomer({
                       name: newCustomerName.trim(),
                       phone: "",
+                      email: "",
                       address: "",
+                      notes: "",
                     });
                     setNewCustomerName("");
                   }}

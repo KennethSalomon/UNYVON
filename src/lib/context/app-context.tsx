@@ -65,7 +65,17 @@ export interface NewProductInput {
 export interface NewCustomerInput {
   name: string;
   phone: string;
+  email: string;
   address: string;
+  notes: string;
+}
+
+export interface NewSupplierInput {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  notes: string;
 }
 
 interface AppContextValue {
@@ -83,6 +93,7 @@ interface AppContextValue {
   addExpense: (input: NewExpenseInput) => Expense;
   addProduct: (input: NewProductInput) => Product;
   addCustomer: (input: NewCustomerInput) => Customer;
+  addSupplier: (input: NewSupplierInput) => Supplier;
   recordPayment: (input: {
     saleId: string;
     amount: number;
@@ -92,6 +103,7 @@ interface AppContextValue {
   updateOrganization: (patch: Partial<Organization>) => void;
   getSale: (id: string) => Sale | undefined;
   getCustomer: (id: string) => Customer | undefined;
+  getSupplier: (id: string) => Supplier | undefined;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -207,9 +219,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...state.customers,
           {
             id: makeId("cust"),
+            organizationId: state.organization.id,
             name: input.customerName,
             phone: "",
+            email: "",
             address: "",
+            notes: "",
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
             totalPurchases: input.total,
             outstandingBalance:
               input.paymentType === "credit"
@@ -294,16 +312,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const addCustomer = (input: NewCustomerInput): Customer => {
+      const now = new Date().toISOString();
       const customer: Customer = {
         id: makeId("cust"),
+        organizationId: state.organization.id,
         name: input.name,
         phone: input.phone,
+        email: input.email,
         address: input.address,
+        notes: input.notes,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
         totalPurchases: 0,
         outstandingBalance: 0,
       };
       setState((prev) => ({ ...prev, customers: [...prev.customers, customer] }));
       return customer;
+    };
+
+    const addSupplier = (input: NewSupplierInput): Supplier => {
+      const now = new Date().toISOString();
+      const supplier: Supplier = {
+        id: makeId("sup"),
+        organizationId: state.organization.id,
+        name: input.name,
+        phone: input.phone,
+        email: input.email,
+        address: input.address,
+        notes: input.notes,
+        products: [],
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+      setState((prev) => ({ ...prev, suppliers: [...prev.suppliers, supplier] }));
+      return supplier;
     };
 
     const recordPayment = (input: {
@@ -373,10 +417,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addExpense,
       addProduct,
       addCustomer,
+      addSupplier,
       recordPayment,
       updateOrganization,
       getSale: (id) => state.sales.find((s) => s.id === id),
       getCustomer: (id) => state.customers.find((c) => c.id === id),
+      getSupplier: (id) => state.suppliers.find((s) => s.id === id),
     };
   }, [state, organization]);
 

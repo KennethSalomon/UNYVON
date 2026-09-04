@@ -27,6 +27,8 @@ export interface Permissions {
   canManageBilling: boolean;
   canManageProducts: boolean;
   canManageCategories: boolean;
+  canManageCustomers: boolean;
+  canManageSuppliers: boolean;
 }
 
 const ROLE_PERMISSIONS: Record<Exclude<OrgRole, null>, Permissions> = {
@@ -38,6 +40,8 @@ const ROLE_PERMISSIONS: Record<Exclude<OrgRole, null>, Permissions> = {
     canManageBilling: true,
     canManageProducts: true,
     canManageCategories: true,
+    canManageCustomers: true,
+    canManageSuppliers: true,
   },
   manager: {
     canManageOrganization: true,
@@ -47,6 +51,8 @@ const ROLE_PERMISSIONS: Record<Exclude<OrgRole, null>, Permissions> = {
     canManageBilling: false,
     canManageProducts: true,
     canManageCategories: true,
+    canManageCustomers: true,
+    canManageSuppliers: true,
   },
   seller: {
     canManageOrganization: false,
@@ -56,6 +62,8 @@ const ROLE_PERMISSIONS: Record<Exclude<OrgRole, null>, Permissions> = {
     canManageBilling: false,
     canManageProducts: false,
     canManageCategories: false,
+    canManageCustomers: false,
+    canManageSuppliers: false,
   },
   stockkeeper: {
     canManageOrganization: false,
@@ -65,6 +73,8 @@ const ROLE_PERMISSIONS: Record<Exclude<OrgRole, null>, Permissions> = {
     canManageBilling: false,
     canManageProducts: true,
     canManageCategories: false,
+    canManageCustomers: false,
+    canManageSuppliers: false,
   },
 };
 

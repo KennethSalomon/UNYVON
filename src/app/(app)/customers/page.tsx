@@ -1,23 +1,99 @@
 ﻿"use client";
 
-import { useState } from "react";
-import { Plus, Search, Phone, MapPin, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  Plus,
+  Search,
+  Phone,
+  MapPin,
+  Mail,
+  StickyNote,
+  Loader2,
+  AlertCircle,
+  X,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useApp, type NewCustomerInput } from "@/lib/context/app-context";
 import { cn, formatFCFA } from "@/lib/utils";
+import {
+  getCustomers,
+  createCustomer,
+} from "@/lib/supabase/customer-actions";
+import type { Customer } from "@/types";
+
+type ViewCustomer = Customer & { source: "supabase" | "mock" };
 
 export default function CustomersPage() {
-  const { customers, addCustomer } = useApp();
+  const { customers: mockCustomers, addCustomer } = useApp();
+  const [customers, setCustomers] = useState<ViewCustomer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [source, setSource] = useState<"supabase" | "mock">("mock");
   const [showModal, setShowModal] = useState(false);
   const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      setError("");
+      try {
+        const data = await getCustomers();
+        if (cancelled) return;
+        setCustomers(
+          data.map((c) => ({ ...c, source: "supabase" as const }))
+        );
+        setSource("supabase");
+      } catch {
+        if (cancelled) return;
+        const fallback: ViewCustomer[] = mockCustomers.map((c) => ({
+          ...c,
+          source: "mock" as const,
+        }));
+        setCustomers(fallback);
+        setSource("mock");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [mockCustomers]);
 
   const filtered = customers.filter((c) =>
     c.name.toLowerCase().includes(query.toLowerCase())
   );
 
-  const totalReceivables = customers.reduce((sum, c) => sum + c.outstandingBalance, 0);
+  const totalReceivables = customers.reduce(
+    (sum, c) => sum + c.outstandingBalance,
+    0
+  );
+
+  async function handleCreate(input: NewCustomerInput) {
+    if (source === "supabase") {
+      try {
+        const created = await createCustomer(input);
+        setCustomers((prev) => [
+          { ...created, source: "supabase" as const },
+          ...prev,
+        ]);
+        return;
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Erreur lors de la création"
+        );
+        return;
+      }
+    }
+    const local = addCustomer(input);
+    setCustomers((prev) => [{ ...local, source: "mock" as const }, ...prev]);
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -25,7 +101,10 @@ export default function CustomersPage() {
         <div>
           <h1 className="font-display text-2xl font-bold text-ink">Clients</h1>
           <p className="text-sm text-muted mt-1">
-            {customers.length} clients · Créances totales : {formatFCFA(totalReceivables)}
+            {customers.length} client{customers.length > 1 ? "s" : ""}
+            {totalReceivables > 0
+              ? ` · Créances totales : ${formatFCFA(totalReceivables)}`
+              : ""}
           </p>
         </div>
         <Button onClick={() => setShowModal(true)}>
@@ -33,6 +112,20 @@ export default function CustomersPage() {
           Ajouter un client
         </Button>
       </div>
+
+      {source === "mock" && !loading && (
+        <div className="flex items-center gap-2 text-xs text-info bg-info/5 border border-info/20 rounded-[10px] px-3 py-2">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          Mode démo — connectez Supabase pour persister les données
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-center gap-2 text-xs text-error bg-error/5 border border-error/20 rounded-[10px] px-3 py-2">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          {error}
+        </div>
+      )}
 
       <div className="flex items-center gap-2 h-9 px-3 rounded-[10px] border border-border bg-surface max-w-sm">
         <Search className="w-4 h-4 text-muted" />
@@ -46,71 +139,115 @@ export default function CustomersPage() {
         />
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        {filtered.map((customer) => (
-          <Card key={customer.id} variant="elevated" className="hover:shadow-md transition-shadow">
-            <CardContent>
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="font-display font-semibold text-ink">{customer.name}</h3>
-                  <div className="flex items-center gap-1.5 mt-1 text-xs text-muted">
-                    <Phone className="w-3 h-3" />
-                    {customer.phone || "—"}
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-1 text-xs text-muted">
-                    <MapPin className="w-3 h-3" />
-                    {customer.address || "—"}
-                  </div>
-                </div>
-                {customer.outstandingBalance > 0 && (
-                  <Badge variant="warning">Créance</Badge>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 pt-3 border-t border-border">
-                <div>
-                  <p className="text-xs text-muted">Total achats</p>
-                  <p className="text-sm font-semibold text-ink mt-0.5">
-                    {formatFCFA(customer.totalPurchases)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted">Solde dû</p>
-                  <p
-                    className={cn(
-                      "text-sm font-semibold mt-0.5",
-                      customer.outstandingBalance > 0 ? "text-warning" : "text-success"
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-6 h-6 text-primary animate-spin" />
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-4">
+          {filtered.map((customer) => (
+            <Card
+              key={customer.id}
+              variant="elevated"
+              className="hover:shadow-md transition-shadow"
+            >
+              <CardContent>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h3 className="font-display font-semibold text-ink">
+                      {customer.name}
+                    </h3>
+                    <div className="flex items-center gap-1.5 mt-1 text-xs text-muted">
+                      <Phone className="w-3 h-3" />
+                      {customer.phone || "—"}
+                    </div>
+                    {customer.email && (
+                      <div className="flex items-center gap-1.5 mt-1 text-xs text-muted">
+                        <Mail className="w-3 h-3" />
+                        {customer.email}
+                      </div>
                     )}
-                  >
-                    {formatFCFA(customer.outstandingBalance)}
-                  </p>
-                </div>
-              </div>
-
-              {customer.outstandingBalance > 0 && (
-                <div className="mt-3 pt-3 border-t border-border">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted">Ancienneté créance</span>
-                    <Badge variant={customer.outstandingBalance > 300000 ? "error" : "warning"}>
-                      {customer.outstandingBalance > 300000 ? "30+ jours" : "8–30 jours"}
-                    </Badge>
+                    <div className="flex items-center gap-1.5 mt-1 text-xs text-muted">
+                      <MapPin className="w-3 h-3" />
+                      {customer.address || "—"}
+                    </div>
+                    {customer.notes && (
+                      <div className="flex items-center gap-1.5 mt-1 text-xs text-muted">
+                        <StickyNote className="w-3 h-3" />
+                        {customer.notes}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {customer.outstandingBalance > 0 && (
+                      <Badge variant="warning">Créance</Badge>
+                    )}
+                    {!customer.isActive && (
+                      <Badge variant="default">Inactif</Badge>
+                    )}
                   </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-        {filtered.length === 0 && (
-          <Card>
-            <CardContent className="py-10 text-center text-sm text-muted">
-              Aucun client trouvé.
-            </CardContent>
-          </Card>
-        )}
-      </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-3 border-t border-border">
+                  <div>
+                    <p className="text-xs text-muted">Total achats</p>
+                    <p className="text-sm font-semibold text-ink mt-0.5">
+                      {formatFCFA(customer.totalPurchases)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted">Solde dû</p>
+                    <p
+                      className={cn(
+                        "text-sm font-semibold mt-0.5",
+                        customer.outstandingBalance > 0
+                          ? "text-warning"
+                          : "text-success"
+                      )}
+                    >
+                      {formatFCFA(customer.outstandingBalance)}
+                    </p>
+                  </div>
+                </div>
+
+                {customer.outstandingBalance > 0 && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted">
+                        Ancienneté créance
+                      </span>
+                      <Badge
+                        variant={
+                          customer.outstandingBalance > 300000
+                            ? "error"
+                            : "warning"
+                        }
+                      >
+                        {customer.outstandingBalance > 300000
+                          ? "30+ jours"
+                          : "8–30 jours"}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+          {filtered.length === 0 && (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted">
+                {query ? "Aucun client ne correspond à votre recherche." : "Aucun client trouvé."}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {showModal && (
-        <CustomerModal onClose={() => setShowModal(false)} onSave={addCustomer} />
+        <CustomerModal
+          onClose={() => setShowModal(false)}
+          onSave={handleCreate}
+        />
       )}
     </div>
   );
@@ -125,14 +262,28 @@ function CustomerModal({
 }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const canSubmit = name.trim().length > 0;
+  const canSubmit = name.trim().length > 0 && !saving;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit) return;
-    onSave({ name: name.trim(), phone: phone.trim(), address: address.trim() });
-    onClose();
+    setSaving(true);
+    try {
+      await onSave({
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+        address: address.trim(),
+        notes: notes.trim(),
+      });
+      onClose();
+    } catch {
+      setSaving(false);
+    }
   };
 
   return (
@@ -145,8 +296,12 @@ function CustomerModal({
       <div className="bg-surface rounded-card border border-border shadow-lg w-full max-w-md">
         <div className="p-6 border-b border-border flex items-start justify-between">
           <div>
-            <h2 className="font-display font-semibold text-lg text-ink">Ajouter un client</h2>
-            <p className="text-sm text-muted mt-1">Référencer un acheteur B2B</p>
+            <h2 className="font-display font-semibold text-lg text-ink">
+              Ajouter un client
+            </h2>
+            <p className="text-sm text-muted mt-1">
+              Référencer un acheteur B2B
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -159,8 +314,11 @@ function CustomerModal({
 
         <div className="p-6 space-y-4">
           <div>
-            <label htmlFor="cust-name" className="text-sm font-medium text-text block mb-1.5">
-              Nom
+            <label
+              htmlFor="cust-name"
+              className="text-sm font-medium text-text block mb-1.5"
+            >
+              Nom *
             </label>
             <input
               id="cust-name"
@@ -173,7 +331,10 @@ function CustomerModal({
           </div>
 
           <div>
-            <label htmlFor="cust-phone" className="text-sm font-medium text-text block mb-1.5">
+            <label
+              htmlFor="cust-phone"
+              className="text-sm font-medium text-text block mb-1.5"
+            >
               Téléphone
             </label>
             <input
@@ -187,7 +348,27 @@ function CustomerModal({
           </div>
 
           <div>
-            <label htmlFor="cust-address" className="text-sm font-medium text-text block mb-1.5">
+            <label
+              htmlFor="cust-email"
+              className="text-sm font-medium text-text block mb-1.5"
+            >
+              E-mail
+            </label>
+            <input
+              id="cust-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="contact@exemple.com"
+              className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="cust-address"
+              className="text-sm font-medium text-text block mb-1.5"
+            >
               Adresse
             </label>
             <input
@@ -199,14 +380,35 @@ function CustomerModal({
               className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
+
+          <div>
+            <label
+              htmlFor="cust-notes"
+              className="text-sm font-medium text-text block mb-1.5"
+            >
+              Notes
+            </label>
+            <textarea
+              id="cust-notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Informations complémentaires..."
+              rows={3}
+              className="w-full px-4 py-3 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+            />
+          </div>
         </div>
 
         <div className="p-6 border-t border-border flex justify-end gap-3">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
             Annuler
           </Button>
           <Button onClick={handleSubmit} disabled={!canSubmit}>
-            Ajouter
+            {saving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              "Ajouter"
+            )}
           </Button>
         </div>
       </div>
