@@ -191,21 +191,73 @@ export interface SaleItem {
   total: number;
 }
 
+export type PurchaseStatus = "draft" | "received" | "cancelled";
+
 export interface Purchase {
   id: string;
+  organizationId: string;
   supplierId: string;
   supplierName: string;
+  reference: string;
+  status: PurchaseStatus;
+  totalAmount: number;
+  purchaseDate: string;
+  notes: string;
   items: PurchaseItem[];
-  total: number;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface PurchaseItem {
+  id: string;
+  purchaseId: string;
   productId: string;
   productName: string;
   quantity: number;
   unitCost: number;
   total: number;
+}
+
+export interface DatabasePurchase {
+  id: string;
+  organization_id: string;
+  supplier_id: string;
+  reference: string | null;
+  status: PurchaseStatus;
+  total_amount: number;
+  purchase_date: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatabasePurchaseItem {
+  id: string;
+  purchase_id: string;
+  product_id: string;
+  quantity: number;
+  unit_cost: number;
+  total: number;
+  created_at: string;
+}
+
+export interface CreatePurchaseInput {
+  supplierId: string;
+  reference: string;
+  purchaseDate: string;
+  notes: string;
+  items: {
+    productId: string;
+    quantity: number;
+    unitCost: number;
+  }[];
+}
+
+export interface UpdatePurchaseInput {
+  id: string;
+  reference?: string;
+  purchaseDate?: string;
+  notes?: string;
 }
 
 export interface Expense {

@@ -248,11 +248,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const addPurchase = (input: NewPurchaseInput): Purchase => {
+      const purchaseId = makeId("pur");
       const purchase: Purchase = {
-        id: makeId("pur"),
+        id: purchaseId,
+        organizationId: state.organization.id,
         supplierId: input.supplierId,
         supplierName: input.supplierName,
-        items: input.items.map((item) => ({
+        reference: "",
+        status: "received",
+        totalAmount: input.total,
+        purchaseDate: new Date().toISOString().slice(0, 10),
+        notes: "",
+        items: input.items.map((item, idx) => ({
+          id: `pi-${purchaseId}-${idx}`,
+          purchaseId,
           productId: item.productId,
           productName:
             state.products.find((p) => p.id === item.productId)?.name ?? "",
@@ -260,8 +269,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           unitCost: item.quantity > 0 ? item.total / item.quantity : 0,
           total: item.total,
         })),
-        total: input.total,
-        createdAt: new Date().toISOString().slice(0, 10),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
       const nextProducts = state.products.map((p) => {

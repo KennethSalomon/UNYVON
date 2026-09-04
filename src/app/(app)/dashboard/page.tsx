@@ -94,7 +94,7 @@ export default function DashboardPage() {
       id: p.id,
       type: "purchase",
       desc: `Réception ${p.supplierName}`,
-      amount: formatFCFA(p.total),
+      amount: formatFCFA(p.totalAmount),
       date: formatDate(p.createdAt),
     })),
     ...expenses.map((e) => ({

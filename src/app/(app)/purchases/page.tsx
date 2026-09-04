@@ -1,16 +1,73 @@
 ﻿"use client";
 
-import { useState } from "react";
-import { Plus, Truck, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Plus, Truck, X, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useApp, type NewPurchaseInput } from "@/lib/context/app-context";
+import { getPurchases, createPurchase, receivePurchase, cancelPurchase } from "@/lib/supabase/purchase-actions";
+import { getSuppliers } from "@/lib/supabase/supplier-actions";
+import { getProducts } from "@/lib/supabase/product-actions";
 import { formatFCFA } from "@/lib/utils";
+import type { Purchase, PurchaseStatus, Supplier, Product, CreatePurchaseInput } from "@/types";
+
+const STATUS_LABELS: Record<PurchaseStatus, { label: string; variant: "default" | "success" | "error" | "warning" }> = {
+  draft: { label: "Brouillon", variant: "warning" },
+  received: { label: "Reçu", variant: "success" },
+  cancelled: { label: "Annulé", variant: "error" },
+};
 
 export default function PurchasesPage() {
-  const { purchases, suppliers, products, addPurchase } = useApp();
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getPurchases();
+      setPurchases(data);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erreur de chargement");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch initiale depuis server actions
+  useEffect(() => { load(); }, [load]);
+
+  const handleReceive = async (id: string) => {
+    try {
+      setActionLoading(id);
+      await receivePurchase(id);
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erreur réception");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCancel = async (id: string) => {
+    try {
+      setActionLoading(id);
+      await cancelPurchase(id);
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erreur annulation");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCreated = () => {
+    setShowModal(false);
+    load();
+  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -18,14 +75,18 @@ export default function PurchasesPage() {
         <div>
           <h1 className="font-display text-2xl font-bold text-ink">Achats</h1>
           <p className="text-sm text-muted mt-1">
-            {purchases.length} réception{purchases.length > 1 ? "s" : ""} enregistrée{purchases.length > 1 ? "s" : ""}
+            {loading ? "Chargement..." : `${purchases.length} achat${purchases.length > 1 ? "s" : ""}`}
           </p>
         </div>
         <Button onClick={() => setShowModal(true)}>
           <Plus className="w-4 h-4" />
-          Enregistrer un achat
+          Nouvel achat
         </Button>
       </div>
+
+      {error && (
+        <div className="p-3 rounded-[10px] bg-danger/10 text-danger text-sm">{error}</div>
+      )}
 
       <Card variant="elevated">
         <div className="overflow-x-auto">
@@ -34,108 +95,179 @@ export default function PurchasesPage() {
               <tr className="border-b border-border">
                 <th className="text-left text-xs font-medium text-muted px-6 py-3">Date</th>
                 <th className="text-left text-xs font-medium text-muted px-6 py-3">Fournisseur</th>
+                <th className="text-left text-xs font-medium text-muted px-6 py-3">Réf.</th>
                 <th className="text-left text-xs font-medium text-muted px-6 py-3">Articles</th>
+                <th className="text-left text-xs font-medium text-muted px-6 py-3">Statut</th>
                 <th className="text-right text-xs font-medium text-muted px-6 py-3">Total</th>
+                <th className="text-right text-xs font-medium text-muted px-6 py-3">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {purchases.map((purchase) => (
-                <tr
-                  key={purchase.id}
-                  className="border-b border-border last:border-0 hover:bg-background/50 transition-colors"
-                >
-                  <td className="px-6 py-4 text-sm text-text">
-                    {new Date(purchase.createdAt).toLocaleDateString("fr-FR", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    })}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-info/10 flex items-center justify-center">
-                        <Truck className="w-4 h-4 text-info" />
-                      </div>
-                      <span className="text-sm font-medium text-ink">
-                        {purchase.supplierName}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-wrap gap-1">
-                      {purchase.items.map((item, i) => (
-                        <Badge key={i} variant="default">
-                          {item.productName} ×{item.quantity}
-                        </Badge>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="text-sm font-semibold text-ink">
-                      {formatFCFA(purchase.total)}
-                    </span>
+              {loading && (
+                <tr>
+                  <td colSpan={7} className="px-6 py-10 text-center text-sm text-muted">
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
+                    Chargement des achats...
                   </td>
                 </tr>
-              ))}
-              {purchases.length === 0 && (
+              )}
+              {!loading && purchases.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-10 text-center text-sm text-muted">
+                  <td colSpan={7} className="px-6 py-10 text-center text-sm text-muted">
                     Aucun achat enregistré.
                   </td>
                 </tr>
               )}
+              {!loading && purchases.map((purchase) => {
+                const statusInfo = STATUS_LABELS[purchase.status];
+                const isActing = actionLoading === purchase.id;
+                return (
+                  <tr
+                    key={purchase.id}
+                    className="border-b border-border last:border-0 hover:bg-background/50 transition-colors"
+                  >
+                    <td className="px-6 py-4 text-sm text-text whitespace-nowrap">
+                      {new Date(purchase.purchaseDate).toLocaleDateString("fr-FR", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-info/10 flex items-center justify-center shrink-0">
+                          <Truck className="w-4 h-4 text-info" />
+                        </div>
+                        <span className="text-sm font-medium text-ink">
+                          {purchase.supplierName}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted">
+                      {purchase.reference || "—"}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1">
+                        {purchase.items.map((item) => (
+                          <Badge key={item.id} variant="default">
+                            {item.productName} ×{item.quantity}
+                          </Badge>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <span className="text-sm font-semibold text-ink">
+                        {formatFCFA(purchase.totalAmount)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      {purchase.status === "draft" && (
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            disabled={isActing}
+                            onClick={() => handleReceive(purchase.id)}
+                          >
+                            {isActing ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="w-4 h-4" />
+                            )}
+                            Réceptionner
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={isActing}
+                            onClick={() => handleCancel(purchase.id)}
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </Card>
 
       {showModal && (
-        <PurchaseModal
-          suppliers={suppliers}
-          products={products}
-          onClose={() => setShowModal(false)}
-          onSave={addPurchase}
-        />
+        <PurchaseModal onClose={() => setShowModal(false)} onCreated={handleCreated} />
       )}
     </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Modal : Nouvel achat
+// ---------------------------------------------------------------------------
+
 function PurchaseModal({
-  suppliers,
-  products,
   onClose,
-  onSave,
+  onCreated,
 }: {
-  suppliers: { id: string; name: string }[];
-  products: { id: string; name: string; unit: string; costPrice: number }[];
   onClose: () => void;
-  onSave: (input: NewPurchaseInput) => void;
+  onCreated: () => void;
 }) {
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const [supplierId, setSupplierId] = useState("");
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [reference, setReference] = useState("");
+  const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().slice(0, 10));
+  const [notes, setNotes] = useState("");
+  const [lines, setLines] = useState<{ productId: string; quantity: number; unitCost: number }[]>([]);
 
-  const cartItems = products
-    .filter((p) => (quantities[p.id] ?? 0) > 0)
-    .map((p) => ({
-      productId: p.id,
-      quantity: quantities[p.id],
-      total: quantities[p.id] * p.costPrice,
-    }));
+  useEffect(() => {
+    Promise.all([getSuppliers(), getProducts()])
+      .then(([s, p]) => { setSuppliers(s.filter((x) => x.isActive)); setProducts(p.filter((x) => x.isActive)); })
+      .catch(() => setError("Erreur chargement données"))
+      .finally(() => setLoadingData(false));
+  }, []);
 
-  const total = cartItems.reduce((sum, item) => sum + item.total, 0);
-  const supplier = suppliers.find((s) => s.id === supplierId);
-  const canSubmit = cartItems.length > 0 && total > 0 && !!supplier;
+  const addLine = () => {
+    setLines((prev) => [...prev, { productId: "", quantity: 1, unitCost: 0 }]);
+  };
 
-  const handleSubmit = () => {
-    if (!canSubmit || !supplier) return;
-    onSave({
-      supplierId: supplier.id,
-      supplierName: supplier.name,
-      items: cartItems,
-      total,
-    });
-    onClose();
+  const updateLine = (idx: number, patch: Partial<{ productId: string; quantity: number; unitCost: number }>) => {
+    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  };
+
+  const removeLine = (idx: number) => {
+    setLines((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const total = lines.reduce((sum, l) => sum + l.quantity * l.unitCost, 0);
+  const canSubmit = supplierId && lines.length > 0 && lines.every((l) => l.productId && l.quantity > 0 && l.unitCost >= 0) && total > 0;
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    try {
+      setSaving(true);
+      setError(null);
+      const input: CreatePurchaseInput = {
+        supplierId,
+        reference,
+        purchaseDate,
+        notes,
+        items: lines.map((l) => ({ productId: l.productId, quantity: l.quantity, unitCost: l.unitCost })),
+      };
+      await createPurchase(input);
+      onCreated();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erreur création");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -143,13 +275,13 @@ function PurchaseModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Enregistrer un achat"
+      aria-label="Nouvel achat"
     >
       <div className="bg-surface rounded-card border border-border shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-border flex items-start justify-between">
           <div>
             <h2 className="font-display font-semibold text-lg text-ink">Nouvel achat</h2>
-            <p className="text-sm text-muted mt-1">Réceptionner une livraison fournisseur</p>
+            <p className="text-sm text-muted mt-1">Enregistrer une livraison fournisseur</p>
           </div>
           <button
             onClick={onClose}
@@ -161,74 +293,149 @@ function PurchaseModal({
         </div>
 
         <div className="p-6 space-y-4">
-          <div>
-            <label htmlFor="pur-supplier" className="text-sm font-medium text-text block mb-1.5">
-              Fournisseur
-            </label>
-            <select
-              id="pur-supplier"
-              value={supplierId}
-              onChange={(e) => setSupplierId(e.target.value)}
-              className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            >
-              <option value="">Sélectionner un fournisseur</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-text block mb-1.5">Produits reçus</label>
-            <div className="space-y-2">
-              {products.map((p) => {
-                const qty = quantities[p.id] ?? 0;
-                return (
-                  <div
-                    key={p.id}
-                    className="flex items-center justify-between gap-3 p-3 rounded-[10px] border border-border"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-ink truncate">{p.name}</p>
-                      <p className="text-xs text-muted">
-                        {formatFCFA(p.costPrice)} / {p.unit}
-                      </p>
-                    </div>
-                    <input
-                      type="number"
-                      min="0"
-                      value={qty === 0 ? "" : qty}
-                      onChange={(e) =>
-                        setQuantities((prev) => ({
-                          ...prev,
-                          [p.id]: Math.max(0, Number(e.target.value) || 0),
-                        }))
-                      }
-                      placeholder="0"
-                      aria-label={`Quantité pour ${p.name}`}
-                      className="w-16 h-9 px-2 rounded-[8px] border border-border text-sm text-center text-ink focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    />
-                  </div>
-                );
-              })}
+          {loadingData && (
+            <div className="text-center py-6 text-sm text-muted">
+              <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
+              Chargement...
             </div>
-          </div>
+          )}
 
-          <div className="flex items-center justify-between p-3 rounded-[10px] bg-background">
-            <span className="text-sm text-muted">Total</span>
-            <span className="font-display font-semibold text-lg text-ink">
-              {formatFCFA(total)}
-            </span>
-          </div>
+          {error && (
+            <div className="p-3 rounded-[10px] bg-danger/10 text-danger text-sm">{error}</div>
+          )}
+
+          {!loadingData && (
+            <>
+              {/* Fournisseur */}
+              <div>
+                <label htmlFor="pur-supplier" className="text-sm font-medium text-text block mb-1.5">
+                  Fournisseur *
+                </label>
+                <select
+                  id="pur-supplier"
+                  value={supplierId}
+                  onChange={(e) => setSupplierId(e.target.value)}
+                  className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                >
+                  <option value="">Sélectionner un fournisseur</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Réf + Date */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="pur-ref" className="text-sm font-medium text-text block mb-1.5">Référence</label>
+                  <input
+                    id="pur-ref"
+                    type="text"
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
+                    placeholder="ex: BCA-2026-004"
+                    className="w-full h-10 px-3 rounded-[10px] border border-border bg-background text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pur-date" className="text-sm font-medium text-text block mb-1.5">Date</label>
+                  <input
+                    id="pur-date"
+                    type="date"
+                    value={purchaseDate}
+                    onChange={(e) => setPurchaseDate(e.target.value)}
+                    className="w-full h-10 px-3 rounded-[10px] border border-border bg-background text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Lignes */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-sm font-medium text-text">Lignes d&apos;achat</label>
+                  <Button size="sm" variant="outline" onClick={addLine}>
+                    <Plus className="w-4 h-4" /> Ajouter
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {lines.map((line, idx) => (
+                    <div key={idx} className="flex items-center gap-2 p-3 rounded-[10px] border border-border">
+                      <select
+                        value={line.productId}
+                        onChange={(e) => updateLine(idx, { productId: e.target.value })}
+                        className="flex-1 h-9 px-2 rounded-[8px] border border-border bg-surface text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      >
+                        <option value="">Produit</option>
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min="1"
+                        value={line.quantity || ""}
+                        onChange={(e) => updateLine(idx, { quantity: Math.max(1, Number(e.target.value) || 1) })}
+                        placeholder="Qté"
+                        aria-label="Quantité"
+                        className="w-16 h-9 px-2 rounded-[8px] border border-border text-sm text-center text-ink focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        value={line.unitCost || ""}
+                        onChange={(e) => updateLine(idx, { unitCost: Math.max(0, Number(e.target.value) || 0) })}
+                        placeholder="Coût"
+                        aria-label="Coût unitaire"
+                        className="w-24 h-9 px-2 rounded-[8px] border border-border text-sm text-right text-ink focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                      <span className="text-xs text-muted whitespace-nowrap">
+                        {formatFCFA(line.quantity * line.unitCost)}
+                      </span>
+                      <button
+                        onClick={() => removeLine(idx)}
+                        aria-label="Supprimer la ligne"
+                        className="p-1 rounded text-muted hover:text-danger transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {lines.length === 0 && (
+                    <p className="text-xs text-muted text-center py-3">Aucune ligne. Cliquez &quot;Ajouter&quot;.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label htmlFor="pur-notes" className="text-sm font-medium text-text block mb-1.5">Notes</label>
+                <textarea
+                  id="pur-notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Notes optionnelles..."
+                  className="w-full px-3 py-2 rounded-[10px] border border-border bg-background text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+                />
+              </div>
+
+              {/* Total */}
+              <div className="flex items-center justify-between p-3 rounded-[10px] bg-background">
+                <span className="text-sm text-muted">Total</span>
+                <span className="font-display font-semibold text-lg text-ink">
+                  {formatFCFA(total)}
+                </span>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="p-6 border-t border-border flex justify-end gap-3">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
             Annuler
           </Button>
-          <Button onClick={handleSubmit} disabled={!canSubmit}>
+          <Button onClick={handleSubmit} disabled={!canSubmit || saving || loadingData}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             Enregistrer
           </Button>
         </div>
@@ -236,5 +443,3 @@ function PurchaseModal({
     </div>
   );
 }
-
-

@@ -258,24 +258,36 @@ export const sales: Sale[] = [
 export const purchases: Purchase[] = [
   {
     id: "pur-1",
+    organizationId: "org-1",
     supplierId: "sup-1",
     supplierName: "Fournisseur A — Riz",
+    reference: "BCA-2026-001",
+    status: "received",
+    totalAmount: 1340000,
+    purchaseDate: "2026-08-28",
+    notes: "Commande riz et maïs août",
     items: [
-      { productId: "prod-1", productName: "Riz 25kg", quantity: 50, unitCost: 18000, total: 900000 },
-      { productId: "prod-3", productName: "Maïs 50kg", quantity: 20, unitCost: 22000, total: 440000 },
+      { id: "pi-1", purchaseId: "pur-1", productId: "prod-1", productName: "Riz 25kg", quantity: 50, unitCost: 18000, total: 900000 },
+      { id: "pi-2", purchaseId: "pur-1", productId: "prod-3", productName: "Maïs 50kg", quantity: 20, unitCost: 22000, total: 440000 },
     ],
-    total: 1340000,
-    createdAt: "2026-08-28",
+    createdAt: "2026-08-28T00:00:00Z",
+    updatedAt: "2026-08-28T00:00:00Z",
   },
   {
     id: "pur-2",
+    organizationId: "org-1",
     supplierId: "sup-2",
     supplierName: "Fournisseur B — Huiles",
+    reference: "BCA-2026-002",
+    status: "received",
+    totalAmount: 360000,
+    purchaseDate: "2026-08-27",
+    notes: "Réapprovisionnement huile",
     items: [
-      { productId: "prod-2", productName: "Huile 5L", quantity: 30, unitCost: 12000, total: 360000 },
+      { id: "pi-3", purchaseId: "pur-2", productId: "prod-2", productName: "Huile 5L", quantity: 30, unitCost: 12000, total: 360000 },
     ],
-    total: 360000,
-    createdAt: "2026-08-27",
+    createdAt: "2026-08-27T00:00:00Z",
+    updatedAt: "2026-08-27T00:00:00Z",
   },
 ];
 
