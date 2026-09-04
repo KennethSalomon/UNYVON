@@ -532,3 +532,44 @@ export interface UpdateExpenseInput {
   notes?: string;
 }
 
+// ---------------------------------------------------------------------------
+// NOVA Intelligence (Phase 2K)
+// ---------------------------------------------------------------------------
+
+export type SignalType =
+  | "stock_risk"
+  | "margin_drop"
+  | "receivable_concentration"
+  | "dead_stock"
+  | "anomaly";
+
+export type SignalSeverity = "high" | "medium" | "low";
+
+export type SignalCategory = "stock" | "margin" | "receivable" | "activity" | "opportunity";
+
+export interface NovaSignal {
+  id: string;
+  type: SignalType;
+  severity: SignalSeverity;
+  category: SignalCategory;
+  title: string;
+  evidence: Record<string, unknown>;
+  calculatedAt: string;
+  productId?: string;
+  customerId?: string;
+}
+
+export interface NovaResponse {
+  signal: NovaSignal;
+  explanation: string;
+  recommendation: string;
+  actions: string[];
+}
+
+export interface NovaInsight {
+  id: string;
+  signal: NovaSignal;
+  response: NovaResponse;
+  createdAt: string;
+}
+

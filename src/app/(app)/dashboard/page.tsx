@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useApp } from "@/lib/context/app-context";
 import { cn, formatFCFA } from "@/lib/utils";
 import {
   getDashboardKPIs,
@@ -29,15 +28,16 @@ import {
   type TopDebtor,
   type MonthlyPerformance,
 } from "@/lib/supabase/dashboard-actions";
+import { getNovaInsights } from "@/lib/supabase/nova-actions";
+import type { NovaInsight } from "@/types";
 
 export default function DashboardPage() {
-  const { insights } = useApp();
-
   const [kpis, setKpis] = useState<DashboardKPIs | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [criticalStock, setCriticalStock] = useState<CriticalStockItem[]>([]);
   const [debtors, setDebtors] = useState<TopDebtor[]>([]);
   const [performance, setPerformance] = useState<MonthlyPerformance[]>([]);
+  const [novaInsights, setNovaInsights] = useState<NovaInsight[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,18 +45,20 @@ export default function DashboardPage() {
     try {
       setLoading(true);
       setError(null);
-      const [k, a, cs, d, p] = await Promise.all([
+      const [k, a, cs, d, p, nova] = await Promise.all([
         getDashboardKPIs(),
         getRecentActivity(8),
         getCriticalStock(),
         getTopDebtors(5),
         getSalesPerformance(),
+        getNovaInsights(),
       ]);
       setKpis(k);
       setActivity(a);
       setCriticalStock(cs);
       setDebtors(d);
       setPerformance(p);
+      setNovaInsights(nova);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur de chargement");
     } finally {
@@ -231,34 +233,41 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="space-y-3">
-                  {insights.length === 0 && (
+                  {novaInsights.length === 0 && (
                     <p className="text-xs text-muted">Aucune alerte pour le moment.</p>
                   )}
-                  {insights.map((insight) => (
-                    <div
-                      key={insight.id}
-                      className={cn(
-                        "p-3 rounded-[12px] border transition-colors duration-200 hover:shadow-sm cursor-pointer",
-                        insight.severity === "warning"
-                          ? "bg-warning/5 border-warning/20"
-                          : "bg-info/5 border-info/20"
-                      )}
-                    >
-                      <div className="flex items-start gap-2">
-                        {insight.severity === "warning" ? (
-                          <AlertTriangle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
-                        ) : (
-                          <TrendingDown className="w-4 h-4 text-info mt-0.5 shrink-0" />
+                  {novaInsights.slice(0, 3).map((insight) => {
+                    const Icon = insight.signal.severity === "high" ? AlertTriangle : TrendingDown;
+                    return (
+                      <div
+                        key={insight.id}
+                        className={cn(
+                          "p-3 rounded-[12px] border transition-colors duration-200 hover:shadow-sm cursor-pointer",
+                          insight.signal.severity === "high"
+                            ? "bg-warning/5 border-warning/20"
+                            : "bg-info/5 border-info/20"
                         )}
-                        <div>
-                          <p className="text-sm font-medium text-ink">{insight.title}</p>
-                          <p className="text-xs text-muted mt-1 leading-relaxed">
-                            {insight.description}
-                          </p>
+                      >
+                        <div className="flex items-start gap-2">
+                          <Icon className={cn(
+                            "w-4 h-4 mt-0.5 shrink-0",
+                            insight.signal.severity === "high" ? "text-warning" : "text-info"
+                          )} />
+                          <div>
+                            <p className="text-sm font-medium text-ink">{insight.signal.title}</p>
+                            <p className="text-xs text-muted mt-1 leading-relaxed">
+                              {insight.response.explanation}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
+                  {novaInsights.length > 3 && (
+                    <p className="text-xs text-muted text-center">
+                      +{novaInsights.length - 3} autres signaux
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
