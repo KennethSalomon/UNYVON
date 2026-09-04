@@ -193,6 +193,60 @@ export interface SaleItem {
 
 export type PurchaseStatus = "draft" | "received" | "cancelled";
 
+export type SaleStatus = "draft" | "confirmed" | "cancelled";
+
+export interface DatabaseSale {
+  id: string;
+  organization_id: string;
+  customer_id: string | null;
+  reference: string | null;
+  status: SaleStatus;
+  sale_date: string;
+  subtotal: number;
+  total_amount: number;
+  notes: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatabaseSaleItem {
+  id: string;
+  sale_id: string;
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  unit_cost_snapshot: number;
+  total: number;
+  created_at: string;
+}
+
+export interface SaleWithItems extends DatabaseSale {
+  items: (DatabaseSaleItem & { productName: string; productUnit: string })[];
+  customerName: string | null;
+}
+
+export interface CreateSaleInput {
+  customerId?: string | null;
+  reference?: string;
+  saleDate?: string;
+  notes?: string;
+  items: {
+    productId: string;
+    quantity: number;
+    unitPrice: number;
+    unitCostSnapshot: number;
+  }[];
+}
+
+export interface UpdateSaleInput {
+  id: string;
+  reference?: string;
+  saleDate?: string;
+  notes?: string;
+  customerId?: string | null;
+}
+
 export interface Purchase {
   id: string;
   organizationId: string;
@@ -268,13 +322,80 @@ export interface Expense {
   date: string;
 }
 
+export type MovementType = "opening" | "purchase_receipt" | "sale" | "adjustment_in" | "adjustment_out";
+
+export type AdjustmentReason = "loss" | "damage" | "counting_error" | "data_entry_error" | "other";
+
 export interface InventoryMovement {
   id: string;
+  organizationId: string;
   productId: string;
   productName: string;
-  type: "purchase" | "sale" | "adjustment";
+  movementType: MovementType;
   quantity: number;
-  date: string;
+  unitCost: number | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  reason: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface DatabaseInventoryMovement {
+  id: string;
+  organization_id: string;
+  product_id: string;
+  movement_type: MovementType;
+  quantity: number;
+  unit_cost: number | null;
+  reference_type: string | null;
+  reference_id: string | null;
+  reason: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+export interface InventoryCount {
+  id: string;
+  organizationId: string;
+  productId: string;
+  productName: string;
+  theoreticalQty: number;
+  physicalQty: number;
+  gap: number;
+  reason: AdjustmentReason | null;
+  notes: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface DatabaseInventoryCount {
+  id: string;
+  organization_id: string;
+  product_id: string;
+  theoretical_qty: number;
+  physical_qty: number;
+  gap: number;
+  reason: AdjustmentReason | null;
+  notes: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+export interface ProductStock {
+  productId: string;
+  productName: string;
+  unit: string;
+  stock: number;
+  minStockThreshold: number;
+  status: "critical" | "warning" | "normal";
+}
+
+export interface CreateInventoryCountInput {
+  productId: string;
+  physicalQty: number;
+  reason: AdjustmentReason;
+  notes: string;
 }
 
 export interface Insight {
@@ -303,4 +424,48 @@ export interface Payment {
 }
 
 export type PaymentMethod = Payment["method"];
+
+export type DatabasePaymentMethod = "cash" | "mobile_money" | "bank_transfer" | "other";
+
+export type PaymentStatus = "unpaid" | "partially_paid" | "paid";
+
+export interface DatabasePayment {
+  id: string;
+  organization_id: string;
+  sale_id: string;
+  amount: number;
+  payment_method: DatabasePaymentMethod;
+  payment_date: string;
+  reference: string | null;
+  notes: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+export interface PaymentWithSale extends DatabasePayment {
+  saleReference: string | null;
+  saleTotalAmount: number;
+  customerName: string | null;
+}
+
+export interface SalePaymentStatus {
+  total_amount: number;
+  total_paid: number;
+  remaining: number;
+  payment_status: PaymentStatus;
+}
+
+export interface CustomerBalance {
+  total_purchases: number;
+  total_paid: number;
+  outstanding: number;
+}
+
+export interface CreatePaymentInput {
+  sale_id: string;
+  amount: number;
+  payment_method: DatabasePaymentMethod;
+  reference?: string;
+  notes?: string;
+}
 

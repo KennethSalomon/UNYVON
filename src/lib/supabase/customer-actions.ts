@@ -12,7 +12,7 @@ import type {
 // Helpers : snake_case ↔ camelCase
 // ---------------------------------------------------------------------------
 
-function toCustomer(row: DatabaseCustomer): Customer {
+function toCustomer(row: DatabaseCustomer, balance?: { totalPurchases: number; outstanding: number }): Customer {
   return {
     id: row.id,
     organizationId: row.organization_id,
@@ -24,8 +24,8 @@ function toCustomer(row: DatabaseCustomer): Customer {
     isActive: row.is_active,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    totalPurchases: 0,
-    outstandingBalance: 0,
+    totalPurchases: balance?.totalPurchases ?? 0,
+    outstandingBalance: balance?.outstanding ?? 0,
   };
 }
 
@@ -44,7 +44,47 @@ export async function getCustomers(): Promise<Customer[]> {
     throw new Error(`Erreur lors du chargement des clients: ${error.message}`);
   }
 
-  return (data as DatabaseCustomer[]).map(toCustomer);
+  const customers = data as DatabaseCustomer[];
+  if (!customers.length) return [];
+
+  // Compute real balances from sales + payments
+  const customerIds = customers.map((c) => c.id);
+  const balances = new Map<string, { totalPurchases: number; outstanding: number }>();
+
+  // Fetch confirmed sales per customer
+  const { data: sales } = await supabase
+    .from("sales")
+    .select("id, customer_id, total_amount")
+    .eq("status", "confirmed")
+    .in("customer_id", customerIds);
+
+  // Initialize balances
+  for (const sale of sales ?? []) {
+    const prev = balances.get(sale.customer_id) ?? { totalPurchases: 0, outstanding: 0 };
+    prev.totalPurchases += sale.total_amount;
+    prev.outstanding += sale.total_amount;
+    balances.set(sale.customer_id, prev);
+  }
+
+  // Fetch payments for these sales
+  if (sales?.length) {
+    const saleIds = sales.map((s) => s.id);
+    const { data: payments } = await supabase
+      .from("payments")
+      .select("sale_id, amount")
+      .in("sale_id", saleIds);
+
+    const saleToCustomer = new Map(sales.map((s) => [s.id, s.customer_id]));
+    for (const p of payments ?? []) {
+      const custId = saleToCustomer.get(p.sale_id);
+      if (custId) {
+        const prev = balances.get(custId);
+        if (prev) prev.outstanding -= p.amount;
+      }
+    }
+  }
+
+  return customers.map((c) => toCustomer(c, balances.get(c.id)));
 }
 
 export async function getCustomer(id: string): Promise<Customer | null> {
