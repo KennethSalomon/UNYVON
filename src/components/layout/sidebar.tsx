@@ -52,7 +52,8 @@ interface SidebarProps {
 }
 
 export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
-  const pathname = usePathname();
+  const rawPathname = usePathname();
+  const pathname = rawPathname ?? "";
   const [collapsed, setCollapsed] = useState(false);
   const { permissions } = useOrg();
 
