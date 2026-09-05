@@ -12,11 +12,90 @@ export type UpdateOrgActionState =
   | { ok: false; error: string }
   | { ok: false; error: "UNAUTHENTICATED" | "NOT_CONFIGURED" };
 
+/** Org retournée par l'onboarding (pour hydratation / reprise). */
+export interface OnboardingOrg {
+  id: string;
+  name: string;
+  sector: string;
+  currency: string;
+}
+
+/** Produit saisi dans le wizard. `id` vaut l'identifiant réel une fois sync. */
+export interface OnboardingProduct {
+  id: string | null;
+  name: string;
+  unit: string;
+  costPrice: number;
+  salePrice: number;
+  minStockThreshold: number;
+  categoryId: string | null;
+}
+
+/** Client saisi dans le wizard. `id` vaut l'identifiant réel une fois sync. */
+export interface OnboardingCustomer {
+  id: string | null;
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  notes: string;
+}
+
+export type OnboardingState =
+  | {
+      ok: true;
+      organization: OnboardingOrg | null;
+      products: OnboardingProduct[];
+      customers: OnboardingCustomer[];
+      stockQuantities: Record<string, number>;
+      hasConfirmedSale: boolean;
+    }
+  | { ok: false; error: "UNAUTHENTICATED" | "NOT_CONFIGURED" | string };
+
+export type OnboardingSyncState =
+  | {
+      ok: true;
+      productIds: Record<string, string>;
+    }
+  | { ok: false; error: string }
+  | { ok: false; error: "UNAUTHENTICATED" | "NOT_CONFIGURED" | "NO_ORG" };
+
+/** Résout l'org la plus récente créée par l'utilisateur, sinon null. */
+async function resolveOwnedOrg(
+  supabase: Awaited<ReturnType<typeof createServerSupabase>>,
+  userId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("organizations")
+    .select("id")
+    .eq("created_by", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return data?.id ?? null;
+}
+
+/** Résout l'org la plus récente dont l'utilisateur est membre, sinon null. */
+async function resolveMemberOrg(
+  supabase: Awaited<ReturnType<typeof createServerSupabase>>,
+  userId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("organization_users")
+    .select("organization_id")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return data?.organization_id ?? null;
+}
+
 /**
- * Crée l'organisation + le membership « owner » + l'abonnement trial de
- * l'utilisateur connecté. Utilise la session utilisateur (jamais la clé
- * service-role) donc la RLS s'applique ; le trigger `handle_new_org`
- * crée le membership owner et l'abonnement trial de façon atomique en base.
+ * Crée l'organisation du premier utilisateur réel — OU réutilise celle qui
+ * existe déjà (idempotence : un reload du wizard ne doit jamais recréer une
+ * org). Le trigger `handle_new_org` crée le membership owner + le trial.
  */
 export async function createOrganizationAction(
   input: { name: string; sector: string; currency: string }
@@ -39,6 +118,12 @@ export async function createOrganizationAction(
 
   if (!user) {
     return { ok: false, error: "UNAUTHENTICATED" };
+  }
+
+  // Idempotence : si l'utilisateur a déjà une org, on la réutilise.
+  const existingId = await resolveOwnedOrg(supabase, user.id);
+  if (existingId) {
+    return { ok: true, organizationId: existingId };
   }
 
   const { data, error } = await supabase
@@ -86,19 +171,16 @@ export async function updateOrganizationAction(
     return { ok: false, error: "UNAUTHENTICATED" };
   }
 
-  const { data: org } = await supabase
-    .from("organization_users")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
+  const orgId =
+    (await resolveOwnedOrg(supabase, user.id)) ??
+    (await resolveMemberOrg(supabase, user.id));
 
-  if (!org) {
+  if (!orgId) {
     return { ok: false, error: "Aucune organisation trouvée." };
   }
 
   const { data: role } = await supabase.rpc("current_org_role", {
-    org_id: org.organization_id,
+    org_id: orgId,
   });
 
   if (!["owner", "manager"].includes(role)) {
@@ -112,7 +194,7 @@ export async function updateOrganizationAction(
       sector: input.sector.trim() || "Commerce général",
       currency: input.currency.trim() || "FCFA",
     })
-    .eq("id", org.organization_id);
+    .eq("id", orgId);
 
   if (error) {
     return { ok: false, error: error.message };
@@ -121,30 +203,13 @@ export async function updateOrganizationAction(
   return { ok: true };
 }
 
-export type SyncOnboardingState =
-  | { ok: true }
-  | { ok: false; error: string }
-  | { ok: false; error: "UNAUTHENTICATED" | "NOT_CONFIGURED" };
-
 /**
- * Synchronise les données d'onboarding (produits, clients, stock initial,
- * vente) vers Supabase en utilisant les mêmes moteurs métier que les
- * pages normales.
- *
- * Idempotence : si des produits du même nom existent déjà pour l'org,
- * on les réutilise au lieu d'en créer de nouveaux.
+ * Retourne l'état réel de l'onboarding pour l'utilisateur connecté :
+ * l'org existante (si reprise après interruption), ses produits/clients
+ * déjà persistés, le stock initial déjà saisi et l'éventuelle vente confirmée.
+ * C'est la source de vérité qui hydrate le wizard au chargement.
  */
-export async function syncOnboardingData(input: {
-  products: { name: string; unit: string; costPrice: number; salePrice: number; minStockThreshold: number; categoryId: string | null; stockQuantity?: number }[];
-  customers: { name: string; phone: string; email: string; address: string; notes: string }[];
-  sale?: {
-    customerId: string | null;
-    customerName: string;
-    items: { productId: string; productName: string; quantity: number; total: number }[];
-    total: number;
-    amountPaid: number;
-  };
-}): Promise<SyncOnboardingState> {
+export async function getOnboardingStateAction(): Promise<OnboardingState> {
   let supabase;
   try {
     supabase = await createServerSupabase();
@@ -160,132 +225,279 @@ export async function syncOnboardingData(input: {
     return { ok: false, error: "UNAUTHENTICATED" };
   }
 
-  const { data: org } = await supabase
-    .from("organization_users")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
+  const orgId =
+    (await resolveOwnedOrg(supabase, user.id)) ??
+    (await resolveMemberOrg(supabase, user.id));
 
-  if (!org) {
-    return { ok: false, error: "Aucune organisation trouvée." };
+  // Aucune org : onboording vierge.
+  if (!orgId) {
+    return {
+      ok: true,
+      organization: null,
+      products: [],
+      customers: [],
+      stockQuantities: {},
+      hasConfirmedSale: false,
+    };
   }
 
-  const orgId = org.organization_id;
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("id, name, sector, currency")
+    .eq("id", orgId)
+    .single();
 
-  // Les IDs de catégorie du wizard sont des mocks locaux ("cat-cereales",
-  // "cat-autre", …) absents de la base : on ne référence que des catégories
-  // réellement présentes pour éviter une violation de clé étrangère.
-  const { data: categories } = await supabase
-    .from("categories")
+  const { data: products } = await supabase
+    .from("products")
+    .select("id, name, unit, cost_price, sale_price, min_stock_threshold, category_id")
+    .eq("organization_id", orgId)
+    .order("created_at", { ascending: false });
+
+  const { data: customers } = await supabase
+    .from("customers")
+    .select("id, name, phone, email, address, notes")
+    .eq("organization_id", orgId)
+    .order("created_at", { ascending: false });
+
+  const { data: openings } = await supabase
+    .from("inventory_movements")
+    .select("product_id, quantity")
+    .eq("organization_id", orgId)
+    .eq("movement_type", "opening");
+
+  const { data: confirmedSale } = await supabase
+    .from("sales")
     .select("id")
-    .eq("organization_id", orgId);
-  const validCategoryIds = new Set<string>((categories ?? []).map((c) => c.id));
+    .eq("organization_id", orgId)
+    .eq("status", "confirmed")
+    .limit(1)
+    .maybeSingle();
 
-  // ── 1. Sync products (idempotent: skip if name already exists) ──
-  const productIds = new Map<string, string>();
+  const stockQuantities: Record<string, number> = {};
+  for (const m of openings ?? []) {
+    stockQuantities[m.product_id] = m.quantity;
+  }
+
+  return {
+    ok: true,
+    organization: org
+      ? { id: org.id, name: org.name, sector: org.sector, currency: org.currency }
+      : null,
+    products: (products ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      unit: p.unit,
+      costPrice: Number(p.cost_price),
+      salePrice: Number(p.sale_price),
+      minStockThreshold: p.min_stock_threshold,
+      categoryId: p.category_id,
+    })),
+    customers: (customers ?? []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      phone: c.phone ?? "",
+      email: c.email ?? "",
+      address: c.address ?? "",
+      notes: c.notes ?? "",
+    })),
+    stockQuantities,
+    hasConfirmedSale: Boolean(confirmedSale),
+  };
+}
+
+/**
+ * Sync des produits de l'étape 3. Idempotent : un produit du même nom (org-
+ * scopé) est mis à jour, jamais dupliqué. Retourne la map nom → id réel.
+ */
+export async function syncOnboardingProducts(input: {
+  organizationId: string;
+  products: OnboardingProduct[];
+}): Promise<OnboardingSyncState> {
+  let supabase;
+  try {
+    supabase = await createServerSupabase();
+  } catch {
+    return { ok: false, error: "NOT_CONFIGURED" };
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "UNAUTHENTICATED" };
+  }
+
+  if (!input.organizationId) {
+    return { ok: false, error: "NO_ORG" };
+  }
+
+  const productIds: Record<string, string> = {};
 
   for (const product of input.products) {
-    const normalizedName = product.name.trim().toLowerCase();
+    const name = product.name.trim();
+    if (!name) continue;
 
-    // Check if product already exists (idempotency)
     const { data: existing } = await supabase
       .from("products")
       .select("id")
-      .eq("organization_id", orgId)
-      .ilike("name", product.name.trim())
+      .eq("organization_id", input.organizationId)
+      .ilike("name", name)
       .limit(1)
       .maybeSingle();
 
     if (existing) {
-      productIds.set(normalizedName, existing.id);
+      const { error: updErr } = await supabase
+        .from("products")
+        .update({
+          unit: product.unit.trim() || "unité",
+          cost_price: product.costPrice,
+          sale_price: product.salePrice,
+          min_stock_threshold: product.minStockThreshold,
+          category_id: product.categoryId ?? null,
+        })
+        .eq("id", existing.id)
+        .eq("organization_id", input.organizationId);
+
+      if (updErr) {
+        return { ok: false, error: `Erreur produit "${name}": ${updErr.message}` };
+      }
+      productIds[name.toLowerCase()] = existing.id;
       continue;
     }
 
     const { data, error } = await supabase
       .from("products")
       .insert({
-        organization_id: orgId,
-        name: product.name.trim(),
+        organization_id: input.organizationId,
+        name,
         unit: product.unit.trim() || "unité",
         cost_price: product.costPrice,
         sale_price: product.salePrice,
         min_stock_threshold: product.minStockThreshold,
-        category_id:
-          product.categoryId && validCategoryIds.has(product.categoryId)
-            ? product.categoryId
-            : null,
+        category_id: product.categoryId ?? null,
       })
       .select("id")
       .single();
 
     if (error) {
-      return { ok: false, error: `Erreur produit "${product.name}": ${error.message}` };
+      return { ok: false, error: `Erreur produit "${name}": ${error.message}` };
     }
-    productIds.set(normalizedName, data.id);
+    productIds[name.toLowerCase()] = data.id;
   }
 
-  // ── 2. Stock initial via inventory_movements (opening) ──
-  for (const product of input.products) {
-    const qty = product.stockQuantity ?? 0;
-    if (qty <= 0) continue;
+  return { ok: true, productIds };
+}
 
-    const productId = productIds.get(product.name.trim().toLowerCase());
-    if (!productId) continue;
+/**
+ * Sync du stock initial de l'étape 4. Idempotent : un seul mouvement
+ * `opening` par (org, produit) ; les mouvements existants sont conservés.
+ */
+export async function syncOnboardingStock(input: {
+  organizationId: string;
+  entries: { productId: string; quantity: number }[];
+}): Promise<OnboardingSyncState> {
+  let supabase;
+  try {
+    supabase = await createServerSupabase();
+  } catch {
+    return { ok: false, error: "NOT_CONFIGURED" };
+  }
 
-    // Check if opening movement already exists (idempotency)
-    const { data: existingMovement } = await supabase
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "UNAUTHENTICATED" };
+  }
+
+  if (!input.organizationId) {
+    return { ok: false, error: "NO_ORG" };
+  }
+
+  for (const entry of input.entries) {
+    if (entry.quantity <= 0) continue;
+
+    const { data: existing } = await supabase
       .from("inventory_movements")
       .select("id")
-      .eq("organization_id", orgId)
-      .eq("product_id", productId)
+      .eq("organization_id", input.organizationId)
+      .eq("product_id", entry.productId)
       .eq("movement_type", "opening")
       .limit(1)
       .maybeSingle();
 
-    if (existingMovement) continue;
+    if (existing) continue;
 
-    const { error: movErr } = await supabase
-      .from("inventory_movements")
-      .insert({
-        organization_id: orgId,
-        product_id: productId,
-        movement_type: "opening",
-        quantity: qty,
-        unit_cost: product.costPrice,
-        reason: "Stock initial — onboarding",
-        created_by: user.id,
-      });
+    const { error } = await supabase.from("inventory_movements").insert({
+      organization_id: input.organizationId,
+      product_id: entry.productId,
+      movement_type: "opening",
+      quantity: entry.quantity,
+      reason: "Stock initial — onboarding",
+      created_by: user.id,
+    });
 
-    if (movErr) {
-      return { ok: false, error: `Erreur stock initial "${product.name}": ${movErr.message}` };
+    if (error) {
+      return { ok: false, error: `Erreur stock initial: ${error.message}` };
     }
   }
 
-  // ── 3. Sync customers (idempotent: skip if name already exists) ──
-  const customerIds = new Map<string, string>();
+  return { ok: true, productIds: {} };
+}
+
+/**
+ * Sync des clients de l'étape 5. Idempotent : un client du même nom (org-
+ * scopé) est réutilisé. Retourne la map nom → id réel.
+ */
+export async function syncOnboardingCustomers(input: {
+  organizationId: string;
+  customers: OnboardingCustomer[];
+}): Promise<OnboardingSyncState> {
+  let supabase;
+  try {
+    supabase = await createServerSupabase();
+  } catch {
+    return { ok: false, error: "NOT_CONFIGURED" };
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "UNAUTHENTICATED" };
+  }
+
+  if (!input.organizationId) {
+    return { ok: false, error: "NO_ORG" };
+  }
+
+  const customerIds: Record<string, string> = {};
 
   for (const customer of input.customers) {
-    const normalizedName = customer.name.trim().toLowerCase();
+    const name = customer.name.trim();
+    if (!name) continue;
 
     const { data: existing } = await supabase
       .from("customers")
       .select("id")
-      .eq("organization_id", orgId)
-      .ilike("name", customer.name.trim())
+      .eq("organization_id", input.organizationId)
+      .ilike("name", name)
       .limit(1)
       .maybeSingle();
 
     if (existing) {
-      customerIds.set(normalizedName, existing.id);
+      customerIds[name.toLowerCase()] = existing.id;
       continue;
     }
 
     const { data, error } = await supabase
       .from("customers")
       .insert({
-        organization_id: orgId,
-        name: customer.name.trim(),
+        organization_id: input.organizationId,
+        name,
         phone: customer.phone.trim() || null,
         email: customer.email.trim() || null,
         address: customer.address.trim() || null,
@@ -295,102 +507,150 @@ export async function syncOnboardingData(input: {
       .single();
 
     if (error) {
-      return { ok: false, error: `Erreur client "${customer.name}": ${error.message}` };
+      return { ok: false, error: `Erreur client "${name}": ${error.message}` };
     }
-    customerIds.set(normalizedName, data.id);
+    customerIds[name.toLowerCase()] = data.id;
   }
 
-  // ── 4. Première vente via le moteur métier (create → confirm) ──
-  if (input.sale && input.sale.items.length > 0) {
-    // Les ID du wizard sont des mocks locaux ("cust-1", "prod-1", …) :
-    // on résout le client et les produits par leur nom vers les vrais ID.
-    const saleCustomerId = input.sale.customerName
-      ? customerIds.get(input.sale.customerName.trim().toLowerCase()) ?? null
-      : null;
+  return { ok: true, productIds: customerIds };
+}
 
-    const resolvedItems = input.sale.items
-      .map((item) => {
-        const productId = item.productName
-          ? productIds.get(item.productName.trim().toLowerCase()) ?? null
-          : null;
-        if (!productId) return null;
-        return { productId, quantity: item.quantity, total: item.total };
-      })
-      .filter(
-        (item): item is { productId: string; quantity: number; total: number } =>
-          item !== null
-      );
+/**
+ * Première vente de l'étape 6 — via exactement le même moteur métier que
+ * les pages : draft → sale_items → confirm_sale → create_payment.
+ * `unit_cost_snapshot` = coût réel du produit (jamais 0 si coût > 0).
+ * Idempotent : une vente confirmée du même total ne recrée rien.
+ */
+export async function syncOnboardingSale(input: {
+  organizationId: string;
+  customerId: string | null;
+  customerName: string;
+  items: { productId: string; quantity: number; total: number }[];
+  total: number;
+  amountPaid: number;
+}): Promise<OnboardingSyncState> {
+  let supabase;
+  try {
+    supabase = await createServerSupabase();
+  } catch {
+    return { ok: false, error: "NOT_CONFIGURED" };
+  }
 
-    // Check if a sale already exists for this org with same total (idempotency)
-    const { data: existingSale } = await supabase
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "UNAUTHENTICATED" };
+  }
+
+  if (!input.organizationId) {
+    return { ok: false, error: "NO_ORG" };
+  }
+
+  if (!input.items.length) {
+    return { ok: false, error: "La vente ne contient aucun article." };
+  }
+
+  // Coût unitaire réel pour le snapshot (source de vérité : products).
+  const productIds = input.items.map((i) => i.productId);
+  const { data: products } = await supabase
+    .from("products")
+    .select("id, cost_price")
+    .in("id", productIds);
+  const costByProduct = new Map<string, number>(
+    (products ?? []).map((p) => [p.id, Number(p.cost_price)])
+  );
+
+  // Une éventuelle draft orpheline (reprise impossible) est clôturée avant
+  // toute décision pour éviter l'accumulation de brouillons.
+  const { data: orphanDrafts } = await supabase
+    .from("sales")
+    .select("id")
+    .eq("organization_id", input.organizationId)
+    .eq("status", "draft")
+    .eq("created_by", user.id);
+
+  for (const draft of orphanDrafts ?? []) {
+    const { error: cancelErr } = await supabase
       .from("sales")
-      .select("id, status")
-      .eq("organization_id", orgId)
-      .eq("total_amount", input.sale.total)
-      .eq("status", "confirmed")
-      .limit(1)
-      .maybeSingle();
-
-    if (!existingSale && resolvedItems.length > 0) {
-      // Create sale as draft (same as createSale server action)
-      const { data: sale, error: saleErr } = await supabase
-        .from("sales")
-        .insert({
-          organization_id: orgId,
-          customer_id: saleCustomerId,
-          sale_date: new Date().toISOString().split("T")[0],
-          status: "draft",
-          created_by: user.id,
-        })
-        .select("id")
-        .single();
-
-      if (saleErr) {
-        return { ok: false, error: `Erreur vente: ${saleErr.message}` };
-      }
-
-      // Insert sale items with proper unit_price
-      const saleItems = resolvedItems.map((item) => ({
-        sale_id: sale.id,
-        product_id: item.productId,
-        quantity: item.quantity,
-        unit_price: item.quantity > 0 ? item.total / item.quantity : 0,
-        unit_cost_snapshot: 0,
-      }));
-
-      const { error: itemsErr } = await supabase.from("sale_items").insert(saleItems);
-      if (itemsErr) {
-        return { ok: false, error: `Erreur lignes vente: ${itemsErr.message}` };
-      }
-
-      // Confirm via RPC (creates stock movement, sets cost snapshot, validates)
-      const { error: confirmErr } = await supabase.rpc("confirm_sale", {
-        p_sale_id: sale.id,
-      });
-
-      if (confirmErr) {
-        return { ok: false, error: `Erreur confirmation vente: ${confirmErr.message}` };
-      }
-
-      // Record payment if amount > 0
-      if (input.sale.amountPaid > 0) {
-        const { error: payErr } = await supabase.rpc("create_payment", {
-          p_sale_id: sale.id,
-          p_amount: input.sale.amountPaid,
-          p_payment_method: "cash",
-          p_reference: "Paiement initial — onboarding",
-          p_notes: "Paiement enregistré lors de l'onboarding",
-        });
-
-        // Payment error is non-fatal — sale is still valid
-        if (payErr) {
-          console.error("Onboarding payment error:", payErr.message);
-        }
-      }
+      .update({ status: "cancelled" })
+      .eq("id", draft.id)
+      .eq("organization_id", input.organizationId);
+    if (cancelErr) {
+      return { ok: false, error: `Erreur réinitialisation vente: ${cancelErr.message}` };
     }
   }
 
-  return { ok: true };
+  // Idempotence : une vente confirmée au même total existe déjà.
+  const { data: existingConfirmed } = await supabase
+    .from("sales")
+    .select("id")
+    .eq("organization_id", input.organizationId)
+    .eq("total_amount", input.total)
+    .eq("status", "confirmed")
+    .limit(1)
+    .maybeSingle();
+
+  if (existingConfirmed) {
+    return { ok: true, productIds: {} };
+  }
+
+  const session = new Date().toISOString().split("T")[0];
+
+  const { data: sale, error: saleErr } = await supabase
+    .from("sales")
+    .insert({
+      organization_id: input.organizationId,
+      customer_id: input.customerId,
+      sale_date: session,
+      status: "draft",
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (saleErr) {
+    return { ok: false, error: `Erreur vente: ${saleErr.message}` };
+  }
+
+  const saleItems = input.items.map((item) => ({
+    sale_id: sale.id,
+    product_id: item.productId,
+    quantity: item.quantity,
+    unit_price: item.quantity > 0 ? Math.round(item.total / item.quantity) : 0,
+    unit_cost_snapshot: costByProduct.get(item.productId) ?? 0,
+  }));
+
+  const { error: itemsErr } = await supabase.from("sale_items").insert(saleItems);
+  if (itemsErr) {
+    return { ok: false, error: `Erreur lignes vente: ${itemsErr.message}` };
+  }
+
+  const { error: confirmErr } = await supabase.rpc("confirm_sale", {
+    p_sale_id: sale.id,
+  });
+
+  if (confirmErr) {
+    return { ok: false, error: `Erreur confirmation vente: ${confirmErr.message}` };
+  }
+
+  if (input.amountPaid > 0) {
+    const { error: payErr } = await supabase.rpc("create_payment", {
+      p_sale_id: sale.id,
+      p_amount: input.amountPaid,
+      p_payment_method: "cash",
+      p_reference: "Paiement initial — onboarding",
+      p_notes: "Paiement enregistré lors de l'onboarding",
+    });
+
+    // Le paiement est non bloquant : la vente reste valide sans lui.
+    if (payErr) {
+      console.error("Onboarding payment error:", payErr.message);
+    }
+  }
+
+  return { ok: true, productIds: {} };
 }
 
 export async function getSubscriptionAction() {
@@ -407,19 +667,16 @@ export async function getSubscriptionAction() {
 
   if (!user) return null;
 
-  const { data: org } = await supabase
-    .from("organization_users")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
+  const orgId =
+    (await resolveOwnedOrg(supabase, user.id)) ??
+    (await resolveMemberOrg(supabase, user.id));
 
-  if (!org) return null;
+  if (!orgId) return null;
 
   const { data: sub } = await supabase
     .from("subscriptions")
     .select("status, trial_start, trial_end, plan")
-    .eq("organization_id", org.organization_id)
+    .eq("organization_id", orgId)
     .limit(1)
     .maybeSingle();
 
@@ -439,8 +696,9 @@ export async function getSubscriptionAction() {
 }
 
 /**
- * Retourne l'organisation active de l'utilisateur connecté (la première
- * à laquelle il appartient), ou null. Sert de base au contexte d'org.
+ * Retourne l'organisation active de l'utilisateur connecté : l'org qu'il a
+ * créée la plus récente, sinon sa membership la plus récente. Choix
+ * déterministe (jamais « la première renvoyée » sans ordre).
  */
 export async function getActiveOrganizationAction() {
   let supabase;
@@ -458,12 +716,18 @@ export async function getActiveOrganizationAction() {
     return null;
   }
 
+  const orgId =
+    (await resolveOwnedOrg(supabase, user.id)) ??
+    (await resolveMemberOrg(supabase, user.id));
+
+  if (!orgId) {
+    return { organization: null, user: null };
+  }
+
   const { data } = await supabase
     .from("organizations")
-    .select(
-      "id, name, sector, currency, organization_users(role)"
-    )
-    .limit(1)
+    .select("id, name, sector, currency, organization_users(role)")
+    .eq("id", orgId)
     .maybeSingle();
 
   const userMeta = user.user_metadata ?? {};
