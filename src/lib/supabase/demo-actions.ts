@@ -55,9 +55,6 @@ export async function getDemoData(): Promise<DemoData | null> {
   }));
 
   const totalCA = recentSales.reduce((sum, s) => sum + s.total_amount, 0);
-  const totalCost = recentSales.reduce((sum, s) => {
-    return sum; // simplified — we don't have per-item cost here
-  }, 0);
 
   return {
     organization: org,

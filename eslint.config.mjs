@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Scripts d'essai ponctuels du root (require Node, non lintés)
+    "test-*.js",
   ]),
 ]);
 

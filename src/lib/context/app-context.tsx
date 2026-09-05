@@ -78,11 +78,13 @@ interface AppContextValue {
   purchases: Purchase[];
   payments: Payment[];
   insights: Insight[];
-  addSale: (input: NewSaleInput) => Sale;
+addSale: (input: NewSaleInput) => Sale;
   addPurchase: (input: NewPurchaseInput) => Purchase;
   addProduct: (input: NewProductInput) => Product;
   addCustomer: (input: NewCustomerInput) => Customer;
   addSupplier: (input: NewSupplierInput) => Supplier;
+  removeProduct: (id: string) => void;
+  removeCustomer: (id: string) => void;
   recordPayment: (input: {
     saleId: string;
     amount: number;
@@ -334,6 +336,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return supplier;
     };
 
+    const removeProduct = (id: string) => {
+      setState((prev) => ({
+        ...prev,
+        products: prev.products.filter((p) => p.id !== id),
+      }));
+    };
+
+    const removeCustomer = (id: string) => {
+      setState((prev) => ({
+        ...prev,
+        customers: prev.customers.filter((c) => c.id !== id),
+      }));
+    };
+
     const recordPayment = (input: {
       saleId: string;
       amount: number;
@@ -395,11 +411,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       purchases: state.purchases,
       payments: state.payments,
       insights: computeInsights(state),
-      addSale,
+addSale,
       addPurchase,
       addProduct,
       addCustomer,
       addSupplier,
+      removeProduct,
+      removeCustomer,
       recordPayment,
       updateOrganization,
       getSale: (id) => state.sales.find((s) => s.id === id),

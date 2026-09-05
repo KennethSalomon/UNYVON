@@ -5,7 +5,7 @@
 "use server";
 
 import { createServerSupabase } from "./server";
-import type { Signal, NovaInsight, NovaResponse } from "../intelligence/types";
+import type { NovaInsight, NovaResponse } from "../intelligence/types";
 import { runAllSignals } from "../intelligence/engine";
 import { generateNovaResponse } from "../intelligence/llm-provider";
 

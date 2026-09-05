@@ -495,7 +495,10 @@ export default function SalesPage() {
                   <label className="text-sm font-medium text-ink">Client (optionnel)</label>
                   <select
                     value={selectedCustomerId ?? ""}
-                    onChange={(e) => setSelectedCustomerId(e.target.value || null)}
+                    onChange={(e) => {
+                      setSelectedCustomerId(e.target.value || null);
+                      setCart([]);
+                    }}
                     className="w-full mt-1 px-3 py-2 border border-border rounded-lg bg-background text-ink"
                   >
                     <option value="">Client comptoir</option>

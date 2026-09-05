@@ -140,7 +140,7 @@ export async function syncOnboardingData(input: {
   sale?: {
     customerId: string | null;
     customerName: string;
-    items: { productId: string; quantity: number; total: number }[];
+    items: { productId: string; productName: string; quantity: number; total: number }[];
     total: number;
     amountPaid: number;
   };
@@ -173,6 +173,15 @@ export async function syncOnboardingData(input: {
 
   const orgId = org.organization_id;
 
+  // Les IDs de catégorie du wizard sont des mocks locaux ("cat-cereales",
+  // "cat-autre", …) absents de la base : on ne référence que des catégories
+  // réellement présentes pour éviter une violation de clé étrangère.
+  const { data: categories } = await supabase
+    .from("categories")
+    .select("id")
+    .eq("organization_id", orgId);
+  const validCategoryIds = new Set<string>((categories ?? []).map((c) => c.id));
+
   // ── 1. Sync products (idempotent: skip if name already exists) ──
   const productIds = new Map<string, string>();
 
@@ -202,7 +211,10 @@ export async function syncOnboardingData(input: {
         cost_price: product.costPrice,
         sale_price: product.salePrice,
         min_stock_threshold: product.minStockThreshold,
-        category_id: product.categoryId || null,
+        category_id:
+          product.categoryId && validCategoryIds.has(product.categoryId)
+            ? product.categoryId
+            : null,
       })
       .select("id")
       .single();
@@ -241,7 +253,8 @@ export async function syncOnboardingData(input: {
         movement_type: "opening",
         quantity: qty,
         unit_cost: product.costPrice,
-        notes: "Stock initial — onboarding",
+        reason: "Stock initial — onboarding",
+        created_by: user.id,
       });
 
     if (movErr) {
@@ -289,9 +302,24 @@ export async function syncOnboardingData(input: {
 
   // ── 4. Première vente via le moteur métier (create → confirm) ──
   if (input.sale && input.sale.items.length > 0) {
-    const saleCustomerId = input.sale.customerId
-      ? customerIds.get(input.sale.customerId.toLowerCase().trim()) ?? input.sale.customerId
+    // Les ID du wizard sont des mocks locaux ("cust-1", "prod-1", …) :
+    // on résout le client et les produits par leur nom vers les vrais ID.
+    const saleCustomerId = input.sale.customerName
+      ? customerIds.get(input.sale.customerName.trim().toLowerCase()) ?? null
       : null;
+
+    const resolvedItems = input.sale.items
+      .map((item) => {
+        const productId = item.productName
+          ? productIds.get(item.productName.trim().toLowerCase()) ?? null
+          : null;
+        if (!productId) return null;
+        return { productId, quantity: item.quantity, total: item.total };
+      })
+      .filter(
+        (item): item is { productId: string; quantity: number; total: number } =>
+          item !== null
+      );
 
     // Check if a sale already exists for this org with same total (idempotency)
     const { data: existingSale } = await supabase
@@ -303,7 +331,7 @@ export async function syncOnboardingData(input: {
       .limit(1)
       .maybeSingle();
 
-    if (!existingSale) {
+    if (!existingSale && resolvedItems.length > 0) {
       // Create sale as draft (same as createSale server action)
       const { data: sale, error: saleErr } = await supabase
         .from("sales")
@@ -322,7 +350,7 @@ export async function syncOnboardingData(input: {
       }
 
       // Insert sale items with proper unit_price
-      const saleItems = input.sale.items.map((item) => ({
+      const saleItems = resolvedItems.map((item) => ({
         sale_id: sale.id,
         product_id: item.productId,
         quantity: item.quantity,

@@ -98,9 +98,15 @@ export async function createCategory(
   const name = input.name.trim();
   if (!name) throw new Error("Le nom de la catégorie est requis.");
 
+  const { orgId } = await requireProductRole(supabase, [
+    "owner",
+    "manager",
+    "stockkeeper",
+  ]);
+
   const { data, error } = await supabase
     .from("categories")
-    .insert({ name })
+    .insert({ name, organization_id: orgId })
     .select("*")
     .single();
 
@@ -128,7 +134,16 @@ export async function updateCategory(
 
 export async function deleteCategory(id: string): Promise<void> {
   const supabase = await createServerSupabase();
-  const { error } = await supabase.from("categories").delete().eq("id", id);
+  const { orgId } = await requireProductRole(supabase, [
+    "owner",
+    "manager",
+    "stockkeeper",
+  ]);
+  const { error } = await supabase
+    .from("categories")
+    .delete()
+    .eq("id", id)
+    .eq("organization_id", orgId);
   if (error) throw new Error(error.message);
 }
 
@@ -169,11 +184,16 @@ export async function createProduct(
   if (input.costPrice < 0) throw new Error("Le coût ne peut pas être négatif.");
   if (input.minStockThreshold < 0) throw new Error("Le seuil ne peut pas être négatif.");
 
-  await requireProductRole(supabase, ["owner", "manager", "stockkeeper"]);
+  const { orgId } = await requireProductRole(supabase, [
+    "owner",
+    "manager",
+    "stockkeeper",
+  ]);
 
   const { data, error } = await supabase
     .from("products")
     .insert({
+      organization_id: orgId,
       name,
       unit: input.unit.trim() || "unité",
       cost_price: input.costPrice,
@@ -194,7 +214,11 @@ export async function updateProduct(
   const supabase = await createServerSupabase();
   const { id, ...fields } = input;
 
-  await requireProductRole(supabase, ["owner", "manager", "stockkeeper"]);
+  const { orgId } = await requireProductRole(supabase, [
+    "owner",
+    "manager",
+    "stockkeeper",
+  ]);
 
   const update: Record<string, unknown> = {};
   if (fields.name !== undefined) update.name = fields.name.trim();
@@ -214,6 +238,7 @@ export async function updateProduct(
     .from("products")
     .update(update)
     .eq("id", id)
+    .eq("organization_id", orgId)
     .select("*")
     .single();
 

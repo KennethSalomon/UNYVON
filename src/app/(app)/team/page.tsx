@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
-import { Plus, X, Send, Users } from "lucide-react";
+import { Plus, X, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,9 +30,6 @@ const roleColors: Record<string, string> = {
 export default function TeamPage() {
   const { organization, user, permissions } = useOrg();
   const [showInvite, setShowInvite] = useState(false);
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState("seller");
-  const [sent, setSent] = useState(false);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -210,66 +207,14 @@ export default function TeamPage() {
             </div>
 
             <div className="p-6 space-y-4">
-              <div>
-                <label
-                  htmlFor="invite-email"
-                  className="text-sm font-medium text-text block mb-1.5"
-                >
-                  Adresse e-mail
-                </label>
-                <input
-                  id="invite-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="collegue@exemple.com"
-                  className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="invite-role"
-                  className="text-sm font-medium text-text block mb-1.5"
-                >
-                  Rôle
-                </label>
-                <select
-                  id="invite-role"
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                >
-                  <option value="seller">Vendeur</option>
-                  <option value="manager">Manager</option>
-                  <option value="stockkeeper">Magasinier</option>
-                </select>
-              </div>
-
-              {sent && (
-                <div className="p-3 rounded-[10px] bg-success/10 text-sm text-success">
-                  Invitation envoyée à {email}.
-                </div>
-              )}
+              <p className="text-sm text-muted">
+                Les invitations d&apos;équipe seront bientôt disponibles.
+              </p>
             </div>
 
             <div className="p-6 border-t border-border flex justify-end gap-3">
-              <Button
-                variant="outline"
-                onClick={() => setShowInvite(false)}
-              >
-                Annuler
-              </Button>
-              <Button
-                onClick={() => {
-                  if (email.trim().length === 0) return;
-                  setSent(true);
-                  setEmail("");
-                }}
-                disabled={email.trim().length === 0}
-              >
-                <Send className="w-4 h-4" />
-                Envoyer l&apos;invitation
+              <Button onClick={() => setShowInvite(false)}>
+                Fermer
               </Button>
             </div>
           </div>

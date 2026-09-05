@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, ArrowRight, Building2, Package, Users, ShoppingCart, Sparkles, Plus } from "lucide-react";
+import { CheckCircle2, ArrowRight, Building2, Package, Users, ShoppingCart, Sparkles, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppProvider, useApp } from "@/lib/context/app-context";
 import { createOrganizationAction, syncOnboardingData } from "@/lib/supabase/org-actions";
@@ -27,7 +27,7 @@ export default function OnboardingPage() {
 }
 
 function OnboardingInner() {
-  const { organization, updateOrganization, products, customers, addProduct, addCustomer, addSale } = useApp();
+  const { organization, updateOrganization, products, customers, addProduct, addCustomer, removeProduct, removeCustomer, addSale } = useApp();
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
   const [orgName, setOrgName] = useState(organization.name);
@@ -45,13 +45,14 @@ function OnboardingInner() {
   const [saleCustomerId, setSaleCustomerId] = useState("");
   const [saleQty, setSaleQty] = useState<Record<string, number>>({});
   const [orgError, setOrgError] = useState("");
+  const [syncError, setSyncError] = useState("");
   const [syncing, setSyncing] = useState(false);
   const orgCreatedRef = useRef(false);
   const syncedRef = useRef(false);
   const [pendingSale, setPendingSale] = useState<{
     customerId: string | null;
     customerName: string;
-    items: { productId: string; quantity: number; total: number }[];
+    items: { productId: string; productName: string; quantity: number; total: number }[];
     total: number;
     amountPaid: number;
   } | null>(null);
@@ -102,10 +103,11 @@ function OnboardingInner() {
   const canStep1 = orgName.trim().length > 0;
   const canStep3 = newProductName.trim().length > 0 && newProductPrice > 0 && newProductCost >= 0;
 
-  const cartItems = products
+const cartItems = products
     .filter((p) => (saleQty[p.id] ?? 0) > 0)
     .map((p) => ({
       productId: p.id,
+      productName: p.name,
       quantity: saleQty[p.id],
       total: saleQty[p.id] * p.salePrice,
     }));
@@ -163,7 +165,7 @@ function OnboardingInner() {
           {currentStep === 2 && "Décrivez brièvement votre activité pour personnaliser l'expérience."}
           {currentStep === 3 && "Ajoutez vos produits avec leur coût et prix de vente."}
           {currentStep === 4 && "Définissez le stock initial de chaque produit."}
-          {currentStep === 5 && "Ajoutez vos clients ou importez-les."}
+          {currentStep === 5 && "Ajoutez votre premier client."}
           {currentStep === 6 && "Enregistrez votre première vente pour voir le système en action."}
           {currentStep === 7 && "NOVA analyse vos données et vous donne votre premier insight."}
         </p>
@@ -247,7 +249,7 @@ function OnboardingInner() {
                     value={newProductCost === 0 ? "" : newProductCost}
                     onChange={(e) => setNewProductCost(Math.max(0, Number(e.target.value) || 0))}
                     placeholder="Coût"
-                    aria-label="Prix de cost"
+                    aria-label="Prix d'achat"
                     className="flex-1 w-24 h-10 px-3 rounded-[10px] border border-border bg-background text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
                   <input
@@ -296,7 +298,17 @@ function OnboardingInner() {
                           Coût: {formatFCFA(p.costPrice)} — Vente: {formatFCFA(p.salePrice)}
                         </p>
                       </div>
-                      <CheckCircle2 className="w-4 h-4 text-success" />
+                      <div className="flex items-center gap-1">
+                        <CheckCircle2 className="w-4 h-4 text-success" />
+                        <button
+                          type="button"
+                          onClick={() => removeProduct(p.id)}
+                          aria-label={`Retirer ${p.name}`}
+                          className="p-1.5 ml-1 rounded-[8px] text-muted hover:text-error hover:bg-error/10 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -346,9 +358,9 @@ function OnboardingInner() {
                   placeholder="Nom du client"
                   className="flex-1 h-10 px-3 rounded-[10px] border border-border bg-background text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
-                <Button
+<Button
                   size="sm"
-                  disabled={newCustomerName.trim().length === 0}
+                  disabled={!/[a-zA-ZÀ-ÖØ-öø-ÿ]/.test(newCustomerName.trim())}
                   onClick={() => {
                     addCustomer({
                       name: newCustomerName.trim(),
@@ -366,13 +378,23 @@ function OnboardingInner() {
               </div>
               {customers.length > 0 && (
                 <div className="mt-2 space-y-2">
-                  {customers.map((c) => (
+{customers.map((c) => (
                     <div
                       key={c.id}
                       className="flex items-center justify-between p-3 rounded-[10px] border border-border bg-background"
                     >
                       <p className="text-sm font-medium text-ink">{c.name}</p>
-                      <CheckCircle2 className="w-4 h-4 text-success" />
+                      <div className="flex items-center gap-1">
+                        <CheckCircle2 className="w-4 h-4 text-success" />
+                        <button
+                          type="button"
+                          onClick={() => removeCustomer(c.id)}
+                          aria-label={`Retirer ${c.name}`}
+                          className="p-1.5 ml-1 rounded-[8px] text-muted hover:text-error hover:bg-error/10 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -384,9 +406,12 @@ function OnboardingInner() {
             <div className="space-y-3">
               <div>
                 <label className="text-sm font-medium text-text block mb-1.5">Client</label>
-                <select
+<select
                   value={saleCustomerId}
-                  onChange={(e) => setSaleCustomerId(e.target.value)}
+                  onChange={(e) => {
+                    setSaleCustomerId(e.target.value);
+                    setSaleQty({});
+                  }}
                   className="w-full h-10 px-3 rounded-[10px] border border-border bg-background text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 >
                   <option value="">Client comptoir</option>
@@ -457,6 +482,12 @@ function OnboardingInner() {
           )}
         </div>
 
+        {syncError && (
+          <div className="w-full p-3 rounded-[10px] border border-error/30 bg-error/5">
+            <p className="text-sm text-error">{syncError}</p>
+          </div>
+        )}
+
         <div className="flex items-center gap-3 w-full">
           {currentStep > 1 && (
             <Button
@@ -512,8 +543,9 @@ function OnboardingInner() {
                   return;
                 }
                 setSyncing(true);
+                setSyncError("");
                 try {
-                  await syncOnboardingData({
+                  const res = await syncOnboardingData({
                     products: products.map((p) => ({
                       name: p.name,
                       unit: p.unit,
@@ -532,11 +564,18 @@ function OnboardingInner() {
                     })),
                     sale: pendingSale ?? undefined,
                   });
+                  if (!res.ok) {
+                    setSyncError(res.error);
+                    return;
+                  }
                   syncedRef.current = true;
-                } catch {
-                  // En cas d'échec, on redirige quand même
-                } finally {
                   router.push("/dashboard");
+                } catch (err) {
+                  setSyncError(
+                    err instanceof Error ? err.message : "Erreur lors de la sauvegarde."
+                  );
+                } finally {
+                  setSyncing(false);
                 }
               }}
             >

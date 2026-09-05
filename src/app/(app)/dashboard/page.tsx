@@ -66,7 +66,10 @@ export default function DashboardPage() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial du dashboard
+    void load();
+  }, [load]);
 
   const formatDate = (dateStr: string) =>
     new Date(dateStr).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });

@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   TrendingDown,
   Users,
-  TrendingUp,
   Sparkles,
   ChevronRight,
   Package,
@@ -25,14 +24,6 @@ const signalIcons: Record<SignalType, typeof AlertTriangle> = {
   receivable_concentration: Users,
   dead_stock: Package,
   anomaly: Activity,
-};
-
-const categoryIcons: Record<SignalCategory, typeof AlertTriangle> = {
-  stock: Package,
-  margin: TrendingDown,
-  receivable: Users,
-  activity: Activity,
-  opportunity: TrendingUp,
 };
 
 const severityConfig: Record<string, { badge: "error" | "warning" | "default"; bg: string; text: string }> = {

@@ -62,7 +62,10 @@ export default function ExpensesPage() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial des dépenses
+    void load();
+  }, [load]);
 
   const filtered = expenses.filter((e) => {
     if (filterCategory !== "all" && e.category !== filterCategory) return false;
