@@ -3,11 +3,21 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { AppProvider } from "@/lib/context/app-context";
-import { OrgProvider } from "@/lib/context/org-context";
-import { useState, useCallback } from "react";
+import { OrgProvider, useOrg } from "@/lib/context/org-context";
+import { useRouter } from "next/navigation";
+import { useState, useCallback, useEffect } from "react";
+import { Loader2 } from "lucide-react";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const router = useRouter();
+  const { organization, user, loading } = useOrg();
+
+  useEffect(() => {
+    if (!loading && user && !organization) {
+      router.replace("/onboarding");
+    }
+  }, [loading, user, organization, router]);
 
   const toggleMenu = useCallback(() => {
     setMobileMenuOpen((prev) => !prev);
@@ -17,10 +27,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     setMobileMenuOpen(false);
   }, []);
 
+  if (loading || !user || !organization) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
-    <AppProvider>
-      <OrgProvider>
-        <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen overflow-hidden bg-background">
       {/* Mobile overlay */}
       {mobileMenuOpen && (
         <div
@@ -37,7 +53,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="animate-fade-in">{children}</div>
         </main>
       </div>
-      </div>
+    </div>
+  );
+}
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <AppProvider>
+      <OrgProvider>
+        <AppShell>{children}</AppShell>
       </OrgProvider>
     </AppProvider>
   );

@@ -721,7 +721,16 @@ export async function getActiveOrganizationAction() {
     (await resolveMemberOrg(supabase, user.id));
 
   if (!orgId) {
-    return { organization: null, user: null };
+    const userMeta = user.user_metadata ?? {};
+    return {
+      organization: null,
+      user: {
+        id: user.id,
+        email: user.email ?? "",
+        firstName: (userMeta.firstName as string) ?? "",
+        lastName: (userMeta.lastName as string) ?? "",
+      },
+    };
   }
 
   const { data } = await supabase
