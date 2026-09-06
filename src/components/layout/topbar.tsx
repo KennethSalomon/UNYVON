@@ -1,9 +1,8 @@
 ﻿"use client";
 
-import { Search, Bell, Menu, LogOut } from "lucide-react";
+import { Menu, LogOut } from "lucide-react";
 import { useOrg } from "@/lib/context/org-context";
 import { signOutAction } from "@/lib/supabase/auth-actions";
-import { useState } from "react";
 
 interface TopbarProps {
   onMenuToggle?: () => void;
@@ -24,7 +23,6 @@ function getDisplayName(firstName: string, lastName: string, email: string): str
 }
 
 export function Topbar({ onMenuToggle }: TopbarProps) {
-  const [searchFocused, setSearchFocused] = useState(false);
   const { organization, user } = useOrg();
 
   const displayName = getDisplayName(
@@ -48,37 +46,9 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
         >
           <Menu className="w-5 h-5" />
         </button>
-
-        <div
-          className={`hidden sm:flex items-center gap-2 h-9 px-3 rounded-[10px] border transition-all duration-200 ${
-            searchFocused
-              ? "border-primary ring-2 ring-primary/20 w-64"
-              : "border-border w-56"
-          }`}
-        >
-          <Search className="w-4 h-4 text-muted shrink-0" />
-          <input
-            type="text"
-            placeholder="Rechercher..."
-            className="flex-1 bg-transparent text-sm text-text placeholder:text-muted focus:outline-none"
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-          />
-          <kbd className="hidden lg:inline text-[10px] text-muted bg-background px-1.5 py-0.5 rounded border border-border">
-            ⌘K
-          </kbd>
-        </div>
       </div>
 
       <div className="flex items-center gap-3">
-        <button
-          aria-label="Notifications"
-          className="relative p-2 rounded-[10px] text-muted hover:text-text hover:bg-background transition-colors"
-        >
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full" />
-        </button>
-
         <div className="flex items-center gap-2 pl-3 border-l border-border">
           <div className="w-8 h-8 rounded-full bg-lavender-soft flex items-center justify-center">
             <span className="text-primary font-display font-semibold text-xs">{initials}</span>

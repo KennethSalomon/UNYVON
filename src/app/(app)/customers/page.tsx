@@ -27,6 +27,12 @@ import type { Customer } from "@/types";
 
 type ViewCustomer = Customer & { source: "supabase" | "mock" };
 
+function getCustomerRef(id: string | null): string {
+  if (!id) return "CLI-----";
+  const hex = id.replace(/-/g, "").slice(0, 4).toUpperCase();
+  return `CLI-${hex}`;
+}
+
 export default function CustomersPage() {
   const { customers: mockCustomers, addCustomer } = useApp();
   const { permissions } = useOrg();
@@ -171,6 +177,9 @@ export default function CustomersPage() {
                     <h3 className="font-display font-semibold text-ink">
                       {customer.name}
                     </h3>
+                    <p className="text-[11px] text-muted font-mono mt-0.5">
+                      {getCustomerRef(customer.id)}
+                    </p>
                     <div className="flex items-center gap-1.5 mt-1 text-xs text-muted">
                       <Phone className="w-3 h-3" />
                       {customer.phone || "—"}
@@ -315,7 +324,7 @@ function CustomerModal({
               Ajouter un client
             </h2>
             <p className="text-sm text-muted mt-1">
-              Référencer un acheteur B2B
+              Un numéro de référence (CLI-XXXX) sera attribué automatiquement.
             </p>
           </div>
           <button

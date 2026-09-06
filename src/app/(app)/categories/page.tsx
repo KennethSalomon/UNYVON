@@ -202,7 +202,7 @@ export default function CategoriesPage() {
                 Supprimer la catégorie ?
               </h2>
               <p className="text-sm text-muted mt-1">
-                « {deleteTarget.name} » sera supprimée. Les produits associés ne sont pas affectés.
+                « {deleteTarget.name} » sera supprimée. Les produits qui utilisent cette catégorie la perdront (sans être supprimés).
               </p>
             </div>
             <div className="p-6 pt-0 flex justify-end gap-3">
