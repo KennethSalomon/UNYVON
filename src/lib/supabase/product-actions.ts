@@ -98,11 +98,7 @@ export async function createCategory(
   const name = input.name.trim();
   if (!name) throw new Error("Le nom de la catégorie est requis.");
 
-  const { orgId } = await requireProductRole(supabase, [
-    "owner",
-    "manager",
-    "stockkeeper",
-  ]);
+  const { orgId } = await requireProductRole(supabase, ["owner", "manager"]);
 
   const { data, error } = await supabase
     .from("categories")
@@ -121,10 +117,13 @@ export async function updateCategory(
   const name = input.name.trim();
   if (!name) throw new Error("Le nom de la catégorie est requis.");
 
+  const { orgId } = await requireProductRole(supabase, ["owner", "manager"]);
+
   const { data, error } = await supabase
     .from("categories")
     .update({ name })
     .eq("id", input.id)
+    .eq("organization_id", orgId)
     .select("*")
     .single();
 
@@ -134,11 +133,7 @@ export async function updateCategory(
 
 export async function deleteCategory(id: string): Promise<void> {
   const supabase = await createServerSupabase();
-  const { orgId } = await requireProductRole(supabase, [
-    "owner",
-    "manager",
-    "stockkeeper",
-  ]);
+  const { orgId } = await requireProductRole(supabase, ["owner", "manager"]);
   const { error } = await supabase
     .from("categories")
     .delete()

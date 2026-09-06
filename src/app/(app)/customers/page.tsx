@@ -22,6 +22,7 @@ import {
   getCustomers,
   createCustomer,
 } from "@/lib/supabase/customer-actions";
+import { SUPABASE_NOT_CONFIGURED_MESSAGE } from "@/lib/supabase/env";
 import type { Customer } from "@/types";
 
 type ViewCustomer = Customer & { source: "supabase" | "mock" };
@@ -49,14 +50,23 @@ export default function CustomersPage() {
           data.map((c) => ({ ...c, source: "supabase" as const }))
         );
         setSource("supabase");
-      } catch {
+      } catch (e) {
         if (cancelled) return;
-        const fallback: ViewCustomer[] = mockCustomers.map((c) => ({
-          ...c,
-          source: "mock" as const,
-        }));
-        setCustomers(fallback);
-        setSource("mock");
+        const isNotConfigured =
+          e instanceof Error && e.message === SUPABASE_NOT_CONFIGURED_MESSAGE;
+        if (isNotConfigured) {
+          const fallback: ViewCustomer[] = mockCustomers.map((c) => ({
+            ...c,
+            source: "mock" as const,
+          }));
+          setCustomers(fallback);
+          setSource("mock");
+        } else {
+          setSource("supabase");
+          setError(
+            e instanceof Error ? e.message : "Erreur de chargement des clients"
+          );
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -292,12 +302,13 @@ function CustomerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 overflow-y-auto bg-ink/40 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="Ajouter un client"
     >
-      <div className="bg-surface rounded-card border border-border shadow-lg w-full max-w-md">
+      <div className="min-h-full flex items-center justify-center p-4">
+        <div className="bg-surface rounded-card border border-border shadow-lg w-full max-w-md">
         <div className="p-6 border-b border-border flex items-start justify-between">
           <div>
             <h2 className="font-display font-semibold text-lg text-ink">
@@ -414,6 +425,7 @@ function CustomerModal({
               "Ajouter"
             )}
           </Button>
+        </div>
         </div>
       </div>
     </div>

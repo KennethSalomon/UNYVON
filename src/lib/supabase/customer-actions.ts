@@ -60,6 +60,8 @@ async function requireCustomerRole(
       "Les vendeurs et stockkeepers ne peuvent pas gérer les clients"
     );
   }
+
+  return { orgId: org.organization_id as string };
 }
 
 // ---------------------------------------------------------------------------
@@ -145,11 +147,12 @@ export async function createCustomer(
 
   const supabase = await createServerSupabase();
 
-  await requireCustomerRole(supabase, ["owner", "manager"]);
+  const { orgId } = await requireCustomerRole(supabase, ["owner", "manager"]);
 
   const { data, error } = await supabase
     .from("customers")
     .insert({
+      organization_id: orgId,
       name: input.name.trim(),
       phone: input.phone.trim() || null,
       email: input.email.trim() || null,
@@ -171,7 +174,7 @@ export async function updateCustomer(
 ): Promise<Customer> {
   const supabase = await createServerSupabase();
 
-  await requireCustomerRole(supabase, ["owner", "manager"]);
+  const { orgId } = await requireCustomerRole(supabase, ["owner", "manager"]);
 
   const updates: Record<string, unknown> = {};
 
@@ -191,6 +194,7 @@ export async function updateCustomer(
     .from("customers")
     .update(updates)
     .eq("id", input.id)
+    .eq("organization_id", orgId)
     .select()
     .single();
 

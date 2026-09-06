@@ -520,7 +520,7 @@ function OnboardingWizard() {
                         min="0"
                         value={newProductCost === 0 ? "" : newProductCost}
                         onChange={(e) => setNewProductCost(Math.max(0, Number(e.target.value) || 0))}
-                        placeholder="Coût"
+                        placeholder="Prix d'achat"
                         aria-label="Prix d'achat"
                         className="flex-1 w-24 h-10 px-3 rounded-[10px] border border-border bg-background text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                       />

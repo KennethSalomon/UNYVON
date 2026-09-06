@@ -4,6 +4,7 @@ import {
   getSupabaseAnonKey,
   getSupabaseUrl,
   isSupabaseConfigured,
+  SUPABASE_NOT_CONFIGURED_MESSAGE,
 } from "./env";
 
 /**
@@ -15,9 +16,7 @@ import {
  */
 export async function createServerSupabase() {
   if (!isSupabaseConfigured()) {
-    throw new Error(
-      "Supabase n'est pas configuré côté serveur. Renseignez les variables d'environnement."
-    );
+    throw new Error(SUPABASE_NOT_CONFIGURED_MESSAGE);
   }
 
   const cookieStore = await cookies();

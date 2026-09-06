@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getPurchases, createPurchase, receivePurchase, cancelPurchase } from "@/lib/supabase/purchase-actions";
-import { getSuppliers } from "@/lib/supabase/supplier-actions";
+import { getSuppliers, createSupplier } from "@/lib/supabase/supplier-actions";
 import { getProducts } from "@/lib/supabase/product-actions";
 import { formatFCFA } from "@/lib/utils";
 import { useOrg } from "@/lib/context/org-context";
@@ -202,7 +202,11 @@ export default function PurchasesPage() {
       </Card>
 
       {showModal && (
-        <PurchaseModal onClose={() => setShowModal(false)} onCreated={handleCreated} />
+        <PurchaseModal
+          onClose={() => setShowModal(false)}
+          onCreated={handleCreated}
+          canCreateSupplier={permissions?.canManageSuppliers ?? false}
+        />
       )}
     </div>
   );
@@ -215,9 +219,11 @@ export default function PurchasesPage() {
 function PurchaseModal({
   onClose,
   onCreated,
+  canCreateSupplier,
 }: {
   onClose: () => void;
   onCreated: () => void;
+  canCreateSupplier: boolean;
 }) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -226,6 +232,10 @@ function PurchaseModal({
   const [error, setError] = useState<string | null>(null);
 
   const [supplierId, setSupplierId] = useState("");
+  const [creatingSupplier, setCreatingSupplier] = useState(false);
+  const [supplierName, setSupplierName] = useState("");
+  const [supplierPhone, setSupplierPhone] = useState("");
+  const [supplierSaving, setSupplierSaving] = useState(false);
   const [reference, setReference] = useState("");
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState("");
@@ -237,6 +247,33 @@ function PurchaseModal({
       .catch(() => setError("Erreur chargement données"))
       .finally(() => setLoadingData(false));
   }, []);
+
+  const handleCreateSupplier = async () => {
+    if (!supplierName.trim()) {
+      setError("Le nom du fournisseur est requis.");
+      return;
+    }
+    try {
+      setSupplierSaving(true);
+      setError(null);
+      const created = await createSupplier({
+        name: supplierName.trim(),
+        phone: supplierPhone.trim(),
+        email: "",
+        address: "",
+        notes: "",
+      });
+      setSuppliers((prev) => [...prev, created]);
+      setSupplierId(created.id);
+      setCreatingSupplier(false);
+      setSupplierName("");
+      setSupplierPhone("");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erreur création fournisseur");
+    } finally {
+      setSupplierSaving(false);
+    }
+  };
 
   const addLine = () => {
     setLines((prev) => [...prev, { productId: "", quantity: 1, unitCost: 0 }]);
@@ -276,12 +313,13 @@ function PurchaseModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 overflow-y-auto bg-ink/40 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="Nouvel achat"
     >
-      <div className="bg-surface rounded-card border border-border shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="min-h-full flex items-center justify-center p-4">
+        <div className="bg-surface rounded-card border border-border shadow-lg w-full max-w-lg">
         <div className="p-6 border-b border-border flex items-start justify-between">
           <div>
             <h2 className="font-display font-semibold text-lg text-ink">Nouvel achat</h2>
@@ -312,20 +350,79 @@ function PurchaseModal({
             <>
               {/* Fournisseur */}
               <div>
-                <label htmlFor="pur-supplier" className="text-sm font-medium text-text block mb-1.5">
-                  Fournisseur *
-                </label>
-                <select
-                  id="pur-supplier"
-                  value={supplierId}
-                  onChange={(e) => setSupplierId(e.target.value)}
-                  className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                >
-                  <option value="">Sélectionner un fournisseur</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label htmlFor="pur-supplier" className="text-sm font-medium text-text block">
+                    Fournisseur *
+                  </label>
+                  {canCreateSupplier && !creatingSupplier && (
+                    <button
+                      type="button"
+                      onClick={() => setCreatingSupplier(true)}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      + Nouveau fournisseur
+                    </button>
+                  )}
+                </div>
+                {creatingSupplier ? (
+                  <div className="space-y-2 p-3 rounded-[10px] border border-border bg-background">
+                    <input
+                      type="text"
+                      value={supplierName}
+                      onChange={(e) => setSupplierName(e.target.value)}
+                      placeholder="Nom du fournisseur *"
+                      aria-label="Nom du nouveau fournisseur"
+                      className="w-full h-10 px-3 rounded-[8px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                    <input
+                      type="text"
+                      value={supplierPhone}
+                      onChange={(e) => setSupplierPhone(e.target.value)}
+                      placeholder="Téléphone"
+                      aria-label="Téléphone du nouveau fournisseur"
+                      className="w-full h-10 px-3 rounded-[8px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={handleCreateSupplier}
+                        disabled={supplierSaving || !supplierName.trim()}
+                      >
+                        {supplierSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                        Créer
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setCreatingSupplier(false);
+                          setSupplierName("");
+                          setSupplierPhone("");
+                        }}
+                        disabled={supplierSaving}
+                      >
+                        Annuler
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <select
+                    id="pur-supplier"
+                    value={supplierId}
+                    onChange={(e) => setSupplierId(e.target.value)}
+                    className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  >
+                    <option value="">Sélectionner un fournisseur</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                    {suppliers.length === 0 && !canCreateSupplier && (
+                      <option value="" disabled>
+                        Aucun fournisseur disponible
+                      </option>
+                    )}
+                  </select>
+                )}
               </div>
 
               {/* Réf + Date */}
@@ -442,6 +539,7 @@ function PurchaseModal({
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             Enregistrer
           </Button>
+        </div>
         </div>
       </div>
     </div>

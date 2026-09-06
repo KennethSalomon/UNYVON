@@ -168,7 +168,7 @@ export function InventoryClient({ stocks, movements, history, error }: Props) {
                         <div>
                           <p className="text-sm font-medium text-ink">{product.productName}</p>
                           <p className="text-xs text-muted">
-                            Seuil : {product.minStockThreshold} {product.unit}
+                            Seuil d&apos;alerte : {product.minStockThreshold} {product.unit}
                           </p>
                         </div>
                       </div>

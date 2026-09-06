@@ -345,7 +345,7 @@ export default function DashboardPage() {
                         <div>
                           <p className="text-sm font-medium text-ink">{item.productName}</p>
                           <p className="text-xs text-muted">
-                            Seuil : {item.minStockThreshold} {item.unit}
+                            Seuil d&apos;alerte : {item.minStockThreshold} {item.unit}
                           </p>
                         </div>
                         <div className="text-right">

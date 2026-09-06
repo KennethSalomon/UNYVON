@@ -20,6 +20,16 @@ export function getSupabaseServiceRoleKey(): string {
   return process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 }
 
+/**
+ * Message renvoyé quand Supabase n'est pas configuré côté serveur. Les pages
+ * client basculent alors en mode démo (mock) UNIQUEMENT sur ce message : une
+ * erreur backend réelle (RLS, timeout, 500) ne doit jamais être masquée.
+ * Sans "use server" et sans next/headers, donc sûre à importer depuis du
+ * code client.
+ */
+export const SUPABASE_NOT_CONFIGURED_MESSAGE =
+  "Supabase n'est pas configuré côté serveur. Renseignez les variables d'environnement.";
+
 export function isSupabaseConfigured(): boolean {
   return Boolean(getSupabaseUrl() && getSupabaseAnonKey());
 }

@@ -187,6 +187,7 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
   const { data: purchase, error: pErr } = await supabase
     .from("purchases")
     .insert({
+      organization_id: supplier.organization_id,
       supplier_id: input.supplierId,
       reference: input.reference.trim() || null,
       purchase_date: input.purchaseDate || new Date().toISOString().slice(0, 10),

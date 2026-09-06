@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   Plus,
@@ -26,6 +27,7 @@ import {
   archiveProduct,
   restoreProduct,
 } from "@/lib/supabase/product-actions";
+import { SUPABASE_NOT_CONFIGURED_MESSAGE } from "@/lib/supabase/env";
 import type { Category } from "@/types";
 
 type ViewProduct = {
@@ -77,22 +79,31 @@ export default function ProductsPage() {
         setProducts(view);
         setCategories(cats);
         setSource("supabase");
-      } catch {
+      } catch (e) {
         if (cancelled) return;
-        const fallback: ViewProduct[] = mockProducts.map((p) => ({
-          id: p.id,
-          name: p.name,
-          unit: p.unit,
-          costPrice: p.costPrice,
-          salePrice: p.salePrice,
-          stockQuantity: p.stockQuantity,
-          minStockThreshold: p.minStockThreshold,
-          categoryId: p.categoryId,
-          isActive: true,
-          source: "mock" as const,
-        }));
-        setProducts(fallback);
-        setSource("mock");
+        const isNotConfigured =
+          e instanceof Error && e.message === SUPABASE_NOT_CONFIGURED_MESSAGE;
+        if (isNotConfigured) {
+          const fallback: ViewProduct[] = mockProducts.map((p) => ({
+            id: p.id,
+            name: p.name,
+            unit: p.unit,
+            costPrice: p.costPrice,
+            salePrice: p.salePrice,
+            stockQuantity: p.stockQuantity,
+            minStockThreshold: p.minStockThreshold,
+            categoryId: p.categoryId,
+            isActive: true,
+            source: "mock" as const,
+          }));
+          setProducts(fallback);
+          setSource("mock");
+        } else {
+          setSource("supabase");
+          setError(
+            e instanceof Error ? e.message : "Erreur de chargement des produits"
+          );
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -294,10 +305,10 @@ export default function ProductsPage() {
                   Unité
                 </th>
                 <th className="text-right text-xs font-medium text-muted px-6 py-3">
-                  Coût
+                  Prix d&apos;achat
                 </th>
                 <th className="text-right text-xs font-medium text-muted px-6 py-3">
-                  Prix vente
+                  Prix de vente
                 </th>
                 <th className="text-right text-xs font-medium text-muted px-6 py-3">
                   Marge
@@ -414,10 +425,10 @@ export default function ProductsPage() {
                       Unité
                     </th>
                     <th className="text-right text-xs font-medium text-muted px-6 py-3">
-                      Coût
+                      Prix d&apos;achat
                     </th>
                     <th className="text-right text-xs font-medium text-muted px-6 py-3">
-                      Prix vente
+                      Prix de vente
                     </th>
                     <th className="text-center text-xs font-medium text-muted px-6 py-3">
                       Actions
@@ -516,12 +527,13 @@ function ProductModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 overflow-y-auto bg-ink/40 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label={isEdit ? "Modifier un produit" : "Ajouter un produit"}
     >
-      <div className="bg-surface rounded-card border border-border shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div className="min-h-full flex items-center justify-center p-4">
+        <div className="bg-surface rounded-card border border-border shadow-lg w-full max-w-md">
         <div className="p-6 border-b border-border flex items-start justify-between">
           <div>
             <h2 className="font-display font-semibold text-lg text-ink">
@@ -561,12 +573,20 @@ function ProductModal({
           </div>
 
           <div>
-            <label
-              htmlFor="prod-category"
-              className="text-sm font-medium text-text block mb-1.5"
-            >
-              Catégorie
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label
+                htmlFor="prod-category"
+                className="text-sm font-medium text-text block"
+              >
+                Catégorie
+              </label>
+              <Link
+                href="/categories"
+                className="text-xs text-primary hover:underline"
+              >
+                Gérer les catégories
+              </Link>
+            </div>
             <select
               id="prod-category"
               value={categoryId}
@@ -603,7 +623,7 @@ function ProductModal({
                 htmlFor="prod-cost"
                 className="text-sm font-medium text-text block mb-1.5"
               >
-                Coût d&apos;achat (FCFA)
+                Prix d&apos;achat (FCFA)
               </label>
               <input
                 id="prod-cost"
@@ -644,7 +664,7 @@ function ProductModal({
                 htmlFor="prod-threshold"
                 className="text-sm font-medium text-text block mb-1.5"
               >
-                Seuil d&apos;alerte
+                Seuil d&apos;alerte stock
               </label>
               <input
                 id="prod-threshold"
@@ -659,6 +679,9 @@ function ProductModal({
                 placeholder="0"
                 className="w-full h-11 px-4 rounded-[10px] border border-border bg-surface text-sm text-text placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
+              <p className="text-xs text-muted mt-1.5">
+                Stock ≤ seuil ⇒ alerte. 0 = pas d&apos;alerte
+              </p>
             </div>
           </div>
         </div>
@@ -670,6 +693,7 @@ function ProductModal({
           <Button onClick={handleSubmit} disabled={!canSubmit}>
             {isEdit ? "Enregistrer" : "Ajouter"}
           </Button>
+        </div>
         </div>
       </div>
     </div>

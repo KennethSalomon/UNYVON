@@ -29,6 +29,41 @@ function toSupplier(row: DatabaseSupplier): Supplier {
 }
 
 // ---------------------------------------------------------------------------
+// Role check helper
+// ---------------------------------------------------------------------------
+
+async function requireSupplierRole(
+  supabase: Awaited<ReturnType<typeof createServerSupabase>>,
+  allowedRoles: string[]
+) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Non authentifié");
+
+  const { data: org } = await supabase
+    .from("organization_users")
+    .select("organization_id")
+    .eq("user_id", user.id)
+    .limit(1)
+    .single();
+
+  if (!org) throw new Error("Aucune organisation");
+
+  const { data: role } = await supabase.rpc("current_org_role", {
+    org_id: org.organization_id,
+  });
+
+  if (!allowedRoles.includes(role)) {
+    throw new Error(
+      "Les vendeurs et stockkeepers ne peuvent pas gérer les fournisseurs"
+    );
+  }
+
+  return { orgId: org.organization_id as string };
+}
+
+// ---------------------------------------------------------------------------
 // Suppliers
 // ---------------------------------------------------------------------------
 
@@ -74,9 +109,12 @@ export async function createSupplier(
   }
 
   const supabase = await createServerSupabase();
+  const { orgId } = await requireSupplierRole(supabase, ["owner", "manager"]);
+
   const { data, error } = await supabase
     .from("suppliers")
     .insert({
+      organization_id: orgId,
       name: input.name.trim(),
       phone: input.phone.trim() || null,
       email: input.email.trim() || null,
@@ -99,6 +137,8 @@ export async function updateSupplier(
   input: UpdateSupplierInput
 ): Promise<Supplier> {
   const supabase = await createServerSupabase();
+  const { orgId } = await requireSupplierRole(supabase, ["owner", "manager"]);
+
   const updates: Record<string, unknown> = {};
 
   if (input.name !== undefined) updates.name = input.name.trim();
@@ -117,6 +157,7 @@ export async function updateSupplier(
     .from("suppliers")
     .update(updates)
     .eq("id", input.id)
+    .eq("organization_id", orgId)
     .select()
     .single();
 
